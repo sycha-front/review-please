@@ -52,7 +52,13 @@ export type ReviewDump = {
   tray_state: TrayState;
 };
 
-export function useReviewDump(pollIntervalMs = 10000) {
+export type UseReviewDumpResult = {
+  snapshot: ReviewDump | null;
+  error: string | null;
+  isLoading: boolean;
+};
+
+export function useReviewDump(pollIntervalMs = 10000): UseReviewDumpResult {
   const [snapshot, setSnapshot] = useState<ReviewDump | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);

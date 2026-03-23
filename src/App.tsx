@@ -1,47 +1,17 @@
+import { useState } from "react";
+import { SettingsView } from "./features/settings/SettingsView";
 import { useReviewDump } from "./hooks/useReviewDump";
+import { useSettings } from "./hooks/useSettings";
 
 function App() {
-  const { error, isLoading, snapshot } = useReviewDump();
+  const reviewState = useReviewDump();
+  const settingsState = useSettings();
+  const [tab, setTab] = useState();
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        margin: 0,
-        background: "#ffffff",
-        padding: "24px",
-        boxSizing: "border-box",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          minHeight: "calc(100vh - 48px)",
-          border: "1px solid #e5e7eb",
-          borderRadius: "12px",
-          background: "#ffffff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#111827",
-          fontSize: "24px",
-          fontWeight: 600,
-        }}
-        >
-        Main
-      </div>
-      <div
-        style={{
-          marginTop: "12px",
-          color: "#4b5563",
-          fontSize: "12px",
-        }}
-      >
-        {isLoading && "Loading review data..."}
-        {!isLoading && error && `Error: ${error}`}
-        {!isLoading && !error && snapshot && `Pending ${snapshot.pending.length} / Done ${snapshot.done.length}`}
-      </div>
-    </main>
+    <>
+      <SettingsView reviewState={reviewState} settingsState={settingsState} />
+    </>
   );
 }
 

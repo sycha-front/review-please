@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -12,6 +13,9 @@ const APP_SUPPORT_DIR: &str = "Library/Application Support/pr-please";
 #[serde(default)]
 pub struct AppConfig {
     pub slack_mention_keyword: String,
+    pub slack_username: String,
+    pub github_username: String,
+    pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
     pub done_menu_limit: usize,
@@ -24,6 +28,9 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             slack_mention_keyword: String::new(),
+            slack_username: String::new(),
+            github_username: String::new(),
+            lookback_days: 7,
             slack_poll_interval_seconds: 120,
             github_min_poll_interval_seconds: 60,
             done_menu_limit: 10,
@@ -50,6 +57,13 @@ impl AppConfig {
         Self::load()
     }
 
+    pub fn load_effective() -> Result<Self> {
+        if config_path()?.exists() {
+            return Self::load();
+        }
+        Ok(config_from_dotenv().unwrap_or_default())
+    }
+
     pub fn save(&self) -> Result<PathBuf> {
         ensure_data_dir()?;
         let path = config_path()?;
@@ -71,6 +85,49 @@ pub fn ensure_data_dir() -> Result<PathBuf> {
     fs::create_dir_all(&data_dir)
         .with_context(|| format!("failed to create {}", data_dir.display()))?;
     Ok(data_dir)
+}
+
+pub fn read_dotenv_map() -> Result<HashMap<String, String>> {
+    let dotenv_path = std::env::current_dir()
+        .ok()
+        .map(|dir| dir.join(".env"))
+        .filter(|path| path.exists());
+    let Some(path) = dotenv_path else {
+        return Ok(HashMap::new());
+    };
+    let contents = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let mut values = HashMap::new();
+    for raw_line in contents.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let parsed = value.trim().trim_matches('"').trim_matches('\'').to_string();
+        values.insert(key.trim().to_string(), parsed);
+    }
+    Ok(values)
+}
+
+pub fn config_from_dotenv() -> Result<AppConfig> {
+    let values = read_dotenv_map()?;
+    let mut config = AppConfig::default();
+    if let Some(value) = values.get("SLACK_MENTION_KEYWORD") {
+        config.slack_mention_keyword = value.clone();
+    }
+    if let Some(value) = values.get("SLACK_USERNAME") {
+        config.slack_username = value.clone();
+    }
+    if let Some(value) = values.get("GITHUB_USERNAME") {
+        config.github_username = value.clone();
+    }
+    if let Some(value) = values.get("LOOKBACK_DAYS").and_then(|value| value.parse::<u64>().ok()) {
+        config.lookback_days = value;
+    }
+    Ok(config)
 }
 
 pub fn data_dir() -> Result<PathBuf> {

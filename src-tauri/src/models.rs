@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -133,7 +134,9 @@ pub struct GithubEvent {
     pub notification_reason: String,
     pub event_kind: String,
     pub actor_login: Option<String>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
     pub actor_is_me: bool,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
     pub related_to_me: bool,
     pub event_at: String,
     pub payload_json: String,
@@ -233,4 +236,52 @@ pub fn format_last_sync(value: Option<&str>) -> Option<String> {
             .ok()
             .map(|dt| dt.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string())
     })
+}
+
+fn deserialize_bool_from_any<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Value::deserialize(deserializer)? {
+        Value::Bool(value) => Ok(value),
+        Value::Number(value) => Ok(value.as_i64().unwrap_or_default() != 0),
+        Value::String(value) => match value.as_str() {
+            "true" | "1" => Ok(true),
+            "false" | "0" | "" => Ok(false),
+            _ => Err(serde::de::Error::custom(format!(
+                "invalid boolean string: {value}"
+            ))),
+        },
+        Value::Null => Ok(false),
+        other => Err(serde::de::Error::custom(format!(
+            "invalid boolean value: {other}"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GithubEvent;
+
+    #[test]
+    fn github_event_deserializes_integer_booleans() {
+        let json = r#"{
+            "id":"event-1",
+            "pr_key":"owner/repo#1",
+            "notification_thread_id":"thread-1",
+            "notification_reason":"mention",
+            "event_kind":"approved",
+            "actor_login":"sycha-front",
+            "actor_is_me":1,
+            "related_to_me":0,
+            "event_at":"2026-03-23T00:00:00Z",
+            "payload_json":"{}",
+            "created_at":"2026-03-23T00:00:00Z"
+        }"#;
+
+        let event: GithubEvent = serde_json::from_str(json).expect("github event should deserialize");
+
+        assert!(event.actor_is_me);
+        assert!(!event.related_to_me);
+    }
 }

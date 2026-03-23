@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use tauri::{ActivationPolicy, Manager};
@@ -16,7 +16,11 @@ use crate::{
 pub fn run_tray_app() -> Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![commands::get_review_dump])
+        .invoke_handler(tauri::generate_handler![
+            commands::get_review_dump,
+            commands::get_settings,
+            commands::save_settings
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
@@ -28,12 +32,13 @@ pub fn run_tray_app() -> Result<()> {
                 let _ = window.hide();
             }
 
-            let config = AppConfig::load_or_default()?;
+            let config = AppConfig::load_effective()?;
+            let runtime_config = Arc::new(RwLock::new(config));
             let store = build_store()?;
             let credentials = build_credentials();
             let tray = TrayController::create(app, config::data_dir()?)?;
             let coordinator: Arc<dyn SyncCoordinator> = Arc::new(LocalSyncCoordinator::new(
-                config,
+                runtime_config.clone(),
                 store.clone(),
                 Arc::new(LocalSlackProvider::new(credentials.clone())),
                 Arc::new(LocalGithubProvider::new(credentials)),
@@ -44,7 +49,7 @@ pub fn run_tray_app() -> Result<()> {
                 coordinator: coordinator.clone(),
                 tray,
                 store,
-                done_menu_limit: AppConfig::load_or_default()?.done_menu_limit,
+                runtime_config,
             });
             coordinator.refresh_tray()?;
             coordinator.start()?;
@@ -52,21 +57,9 @@ pub fn run_tray_app() -> Result<()> {
         })
         .build(tauri::generate_context!())?
         .run(|app, event| {
-            match event {
-                tauri::RunEvent::ExitRequested { .. } => {
-                    let state = app.state::<AppState>();
-                    let _ = state.coordinator.stop();
-                }
-                tauri::RunEvent::WindowEvent { label, event, .. } => {
-                    if label == "main" {
-                        if let tauri::WindowEvent::Focused(false) = event {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.hide();
-                            }
-                        }
-                    }
-                }
-                _ => {}
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let state = app.state::<AppState>();
+                let _ = state.coordinator.stop();
             }
         });
     Ok(())

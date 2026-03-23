@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use chrono::{Datelike, Local};
+use chrono::{Datelike, Duration, Local};
 
 use crate::{
     config::AppConfig,
@@ -30,7 +30,15 @@ pub fn run(
     let last_seen = sync_state.last_seen_slack_ts.as_deref();
     let mut outcome = SlackSyncOutcome::default();
     let current_year = Local::now().year();
-    let mut messages = slack_provider.search_messages(&config.slack_mention_keyword)?;
+    let query = if config.lookback_days > 0 {
+        let after = (Local::now() - Duration::days(config.lookback_days as i64))
+            .format("%Y-%m-%d")
+            .to_string();
+        format!("{} after:{}", config.slack_mention_keyword, after)
+    } else {
+        config.slack_mention_keyword.clone()
+    };
+    let mut messages = slack_provider.search_messages(&query)?;
     messages.sort_by(|left, right| left.ts.partial_cmp(&right.ts).unwrap_or(std::cmp::Ordering::Equal));
 
     for message in messages {
@@ -45,11 +53,28 @@ pub fn run(
             continue;
         }
         let deadline = extract_deadline(&message.text, current_year);
-        let display_name = slack_provider
-            .fetch_user_display_name(&message.user_id)?
-            .unwrap_or_else(|| message.user_id.clone());
+        let display_name = match slack_provider.fetch_user_display_name(&message.user_id) {
+            Ok(Some(value)) => value,
+            Ok(None) => message.user_id.clone(),
+            Err(error) => {
+                eprintln!(
+                    "Slack display name lookup failed for {}: {error}",
+                    message.user_id
+                );
+                message.user_id.clone()
+            }
+        };
         let permalink = match message.channel_id.as_deref() {
-            Some(channel_id) => slack_provider.fetch_permalink(channel_id, &message.ts)?,
+            Some(channel_id) => match slack_provider.fetch_permalink(channel_id, &message.ts) {
+                Ok(value) => value,
+                Err(error) => {
+                    eprintln!(
+                        "Slack permalink lookup failed for {} in {}: {error}",
+                        message.ts, channel_id
+                    );
+                    None
+                }
+            },
             None => None,
         };
 

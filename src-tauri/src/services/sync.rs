@@ -2,7 +2,7 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -48,7 +48,7 @@ struct StatusSnapshot {
 }
 
 pub struct LocalSyncCoordinator {
-    config: AppConfig,
+    config: Arc<RwLock<AppConfig>>,
     store: Arc<dyn ReviewStore>,
     slack_provider: Arc<dyn SlackProvider>,
     github_provider: Arc<dyn GithubProvider>,
@@ -62,7 +62,7 @@ pub struct LocalSyncCoordinator {
 
 impl LocalSyncCoordinator {
     pub fn new(
-        config: AppConfig,
+        config: Arc<RwLock<AppConfig>>,
         store: Arc<dyn ReviewStore>,
         slack_provider: Arc<dyn SlackProvider>,
         github_provider: Arc<dyn GithubProvider>,
@@ -84,6 +84,10 @@ impl LocalSyncCoordinator {
             })),
             running: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    fn current_config(&self) -> AppConfig {
+        self.config.read().expect("config lock").clone()
     }
 
     fn set_status(&self, status: &str, last_error: Option<String>) -> Result<()> {
@@ -110,14 +114,15 @@ impl LocalSyncCoordinator {
     }
 
     fn run_slack_sync(&self) -> Result<u64> {
+        let config = self.current_config();
         match slack_ingest::run(
-            &self.config,
+            &config,
             self.store.clone(),
             self.slack_provider.clone(),
             self.github_provider.clone(),
         ) {
             Ok(outcome) => {
-                if outcome.new_pending_count > 0 && self.config.notify_on_new_pending {
+                if outcome.new_pending_count > 0 && config.notify_on_new_pending {
                     let _ = self.notifications.notify(
                         "pr-please",
                         &format!("{} new review requests", outcome.new_pending_count),
@@ -127,7 +132,7 @@ impl LocalSyncCoordinator {
             }
             Err(error) => {
                 let failures = self.record_failure(SLACK_SYNC_SOURCE, &error.to_string())?;
-                if failures == 3 && self.config.notify_on_errors {
+                if failures == 3 && config.notify_on_errors {
                     let _ = self.notifications.notify("pr-please", "Slack sync failed");
                 }
                 Err(error)
@@ -136,9 +141,10 @@ impl LocalSyncCoordinator {
     }
 
     fn run_github_sync(&self) -> Result<u64> {
-        match github_events::run(&self.config, self.store.clone(), self.github_provider.clone()) {
+        let config = self.current_config();
+        match github_events::run(&config, self.store.clone(), self.github_provider.clone()) {
             Ok(outcome) => {
-                if self.config.notify_on_done {
+                if config.notify_on_done {
                     for pr_key in &outcome.completed_pr_keys {
                         let _ = self.notifications.notify(
                             "pr-please",
@@ -150,7 +156,7 @@ impl LocalSyncCoordinator {
             }
             Err(error) => {
                 let failures = self.record_failure(GITHUB_SYNC_SOURCE, &error.to_string())?;
-                if failures == 3 && self.config.notify_on_errors {
+                if failures == 3 && config.notify_on_errors {
                     let _ = self.notifications.notify("pr-please", "GitHub sync failed");
                 }
                 Err(error)
@@ -169,12 +175,13 @@ impl LocalSyncCoordinator {
 
             if due_slack || due_github {
                 let mut last_error = None;
+                let config = self.current_config();
                 let _ = self.set_status("Syncing", None);
                 if due_slack {
                     if let Err(error) = self.run_slack_sync() {
                         last_error = Some(error.to_string());
                     }
-                    next_slack = Instant::now() + Duration::from_secs(self.config.slack_poll_interval_seconds);
+                    next_slack = Instant::now() + Duration::from_secs(config.slack_poll_interval_seconds);
                 }
                 if due_github {
                     if let Err(error) = self.run_github_sync() {
@@ -185,7 +192,7 @@ impl LocalSyncCoordinator {
                         .get_sync_state(GITHUB_SYNC_SOURCE)
                         .ok()
                         .and_then(|state| state.github_poll_interval_seconds)
-                        .unwrap_or(self.config.github_min_poll_interval_seconds);
+                        .unwrap_or(config.github_min_poll_interval_seconds);
                     next_github = Instant::now() + Duration::from_secs(poll_interval);
                 }
                 if let Some(error) = last_error {

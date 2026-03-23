@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command, sync::Arc};
+use std::{path::PathBuf, process::Command, sync::{Arc, RwLock}};
 
 use anyhow::{Context, Result};
 use tauri::{
@@ -7,13 +7,14 @@ use tauri::{
     App, AppHandle, Manager, PhysicalPosition, Runtime, Wry,
 };
 
-use crate::{db::ReviewStore, models::TrayState, services::sync::SyncCoordinator};
+use crate::{config::AppConfig, db::ReviewStore, models::TrayState, services::sync::SyncCoordinator};
 
 const MENU_PENDING_ID: &str = "pending";
 const MENU_DONE_ID: &str = "done";
 const MENU_LAST_SYNC_ID: &str = "last_sync";
 const MENU_STATUS_ID: &str = "status";
 const MENU_SYNC_NOW_ID: &str = "sync_now";
+const MENU_SETTINGS_ID: &str = "settings";
 const MENU_SHOW_LAST_ERROR_ID: &str = "show_last_error";
 const MENU_OPEN_DATA_DIR_ID: &str = "open_data_dir";
 const MENU_QUIT_ID: &str = "quit";
@@ -36,6 +37,7 @@ impl TrayController {
             MenuItem::with_id(app, MENU_LAST_SYNC_ID, "Last Sync: never", false, None::<&str>)?;
         let status_item = MenuItem::with_id(app, MENU_STATUS_ID, "Status: OK", false, None::<&str>)?;
         let sync_now_item = MenuItem::with_id(app, MENU_SYNC_NOW_ID, "Sync Now", true, None::<&str>)?;
+        let settings_item = MenuItem::with_id(app, MENU_SETTINGS_ID, "Settings", true, None::<&str>)?;
         let show_last_error_item = MenuItem::with_id(
             app,
             MENU_SHOW_LAST_ERROR_ID,
@@ -56,6 +58,7 @@ impl TrayController {
                 &status_item,
                 &separator,
                 &sync_now_item,
+                &settings_item,
                 &show_last_error_item,
                 &open_data_dir_item,
                 &quit_item,
@@ -116,6 +119,7 @@ impl TrayController {
             .with_context(|| format!("failed to open {}", self.data_dir.display()))?;
         Ok(())
     }
+
 }
 
 fn handle_tray_icon_event<R: Runtime>(app: &AppHandle<R>, event: &TrayIconEvent) -> Result<()> {
@@ -153,11 +157,26 @@ fn toggle_main_window<R: Runtime>(
     Ok(())
 }
 
+fn show_main_window_near_cursor<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    if let Ok(position) = app.cursor_position() {
+        let size = window.outer_size()?;
+        let x = (position.x.round() as i32 - (size.width as i32 / 2)).max(0);
+        let y = (position.y.round() as i32 + 12).max(0);
+        window.set_position(PhysicalPosition::new(x, y))?;
+    }
+    window.show()?;
+    window.set_focus()?;
+    Ok(())
+}
+
 pub struct AppState {
     pub coordinator: Arc<dyn SyncCoordinator>,
     pub tray: Arc<TrayController>,
     pub store: Arc<dyn ReviewStore>,
-    pub done_menu_limit: usize,
+    pub runtime_config: Arc<RwLock<AppConfig>>,
 }
 
 fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Result<()> {
@@ -166,6 +185,9 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Resul
     match id {
         MENU_SYNC_NOW_ID => {
             state.coordinator.sync_now()?;
+        }
+        MENU_SETTINGS_ID => {
+            show_main_window_near_cursor(app)?;
         }
         MENU_SHOW_LAST_ERROR_ID => {
             if let Some(last_error) = state.coordinator.last_error() {

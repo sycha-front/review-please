@@ -2,10 +2,10 @@ import { H1 } from "../../../common/typo";
 import s from "./header.module.css";
 
 type HeaderProps = {
-  reviewSummary: string;
+  // reviewSummary: string;
 };
 
-export default function Header({ reviewSummary }: HeaderProps) {
+export default function Header({}: HeaderProps) {
   return (
     <header className={s.header}>
       <H1>Review-please</H1>

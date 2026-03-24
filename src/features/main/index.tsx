@@ -14,7 +14,11 @@ export default function Main({ data }: Props) {
 
   return (
     <section>
-      <Tabs tab={tab} setTab={setTab}></Tabs>
+      <Tabs
+        tab={tab}
+        setTab={setTab}
+        counts={[data.pending.length, data.done.length, data.update.length]}
+      />
       <article className={s.tabContent}>
         <PrList
           className={cn(tab === 0 ? s.visible : s.hidden)}

@@ -1,7 +1,7 @@
 use std::{process::Command, sync::Arc};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, Local, NaiveDate, TimeZone, Weekday};
 use regex::Regex;
 use serde::Deserialize;
 
@@ -27,12 +27,92 @@ pub fn extract_pull_requests(text: &str) -> Vec<GithubPullRef> {
     pulls
 }
 
-pub fn extract_deadline(text: &str, year: i32) -> Option<String> {
-    let regex = Regex::new(r"\[(\d{1,2})/(\d{1,2})\]").expect("valid regex");
-    let captures = regex.captures(text)?;
+pub fn extract_deadline(text: &str, base_date: NaiveDate) -> Option<String> {
+    let bracket_regex = Regex::new(r"\[([^\]]+)\]").expect("valid regex");
+    for captures in bracket_regex.captures_iter(text) {
+        let content = captures.get(1)?.as_str();
+        if let Some(date) = extract_numeric_deadline(content, base_date.year()) {
+            return Some(date.to_string());
+        }
+        if let Some(date) = extract_relative_deadline(content, base_date) {
+            return Some(date.to_string());
+        }
+    }
+    None
+}
+
+pub fn slack_ts_to_local_date(ts: &str) -> Option<NaiveDate> {
+    let (seconds, nanos) = match ts.split_once('.') {
+        Some((seconds, fraction)) => {
+            let seconds = seconds.parse::<i64>().ok()?;
+            let mut nanos = fraction.to_string();
+            nanos.truncate(9);
+            while nanos.len() < 9 {
+                nanos.push('0');
+            }
+            let nanos = nanos.parse::<u32>().ok()?;
+            (seconds, nanos)
+        }
+        None => (ts.parse::<i64>().ok()?, 0),
+    };
+    Local
+        .timestamp_opt(seconds, nanos)
+        .single()
+        .map(|value| value.date_naive())
+}
+
+fn extract_numeric_deadline(content: &str, year: i32) -> Option<NaiveDate> {
+    let regex = Regex::new(r"(\d{1,2})\s*[/.]\s*(\d{1,2})").expect("valid regex");
+    let captures = regex.captures(content)?;
     let month = captures.get(1)?.as_str().parse::<u32>().ok()?;
     let day = captures.get(2)?.as_str().parse::<u32>().ok()?;
-    NaiveDate::from_ymd_opt(year, month, day).map(|date| date.to_string())
+    NaiveDate::from_ymd_opt(year, month, day)
+}
+
+fn extract_relative_deadline(content: &str, base_date: NaiveDate) -> Option<NaiveDate> {
+    if content.contains("금일") || content.contains("오늘") {
+        return Some(base_date);
+    }
+    if content.contains("명일") || content.contains("내일") {
+        return Some(base_date + Duration::days(1));
+    }
+    if content.contains("차주") {
+        let weekday_regex = Regex::new(r"차주\s*([월화수목금토일])").expect("valid regex");
+        let weekday = weekday_regex
+            .captures(content)
+            .and_then(|captures| captures.get(1))
+            .and_then(|capture| match capture.as_str() {
+                "월" => Some(Weekday::Mon),
+                "화" => Some(Weekday::Tue),
+                "수" => Some(Weekday::Wed),
+                "목" => Some(Weekday::Thu),
+                "금" => Some(Weekday::Fri),
+                "토" => Some(Weekday::Sat),
+                "일" => Some(Weekday::Sun),
+                _ => None,
+            })?;
+        return Some(next_weekday(base_date, weekday));
+    }
+    None
+}
+
+fn next_weekday(base_date: NaiveDate, target: Weekday) -> NaiveDate {
+    let current = weekday_index(base_date.weekday());
+    let target = weekday_index(target);
+    let offset = 7 - current + target;
+    base_date + Duration::days(offset)
+}
+
+fn weekday_index(value: Weekday) -> i64 {
+    match value {
+        Weekday::Mon => 0,
+        Weekday::Tue => 1,
+        Weekday::Wed => 2,
+        Weekday::Thu => 3,
+        Weekday::Fri => 4,
+        Weekday::Sat => 5,
+        Weekday::Sun => 6,
+    }
 }
 
 pub struct LocalSlackProvider {
@@ -196,7 +276,9 @@ struct PermalinkResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_deadline, extract_pull_requests};
+    use chrono::NaiveDate;
+
+    use super::{extract_deadline, extract_pull_requests, slack_ts_to_local_date};
 
     #[test]
     fn extracts_single_pull_request() {
@@ -214,16 +296,102 @@ mod tests {
 
     #[test]
     fn extracts_deadline() {
-        assert_eq!(extract_deadline("[3/11] review", 2026).as_deref(), Some("2026-03-11"));
+        assert_eq!(
+            extract_deadline(
+                "[3/11] review",
+                NaiveDate::from_ymd_opt(2026, 3, 1).expect("date")
+            )
+            .as_deref(),
+            Some("2026-03-11")
+        );
     }
 
     #[test]
     fn ignores_missing_deadline() {
-        assert!(extract_deadline("[soon] review", 2026).is_none());
+        assert!(
+            extract_deadline(
+                "[soon] review",
+                NaiveDate::from_ymd_opt(2026, 3, 1).expect("date")
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn accepts_two_digit_deadline() {
-        assert_eq!(extract_deadline("[12/01]", 2026).as_deref(), Some("2026-12-01"));
+        assert_eq!(
+            extract_deadline(
+                "[12/01]",
+                NaiveDate::from_ymd_opt(2026, 3, 1).expect("date")
+            )
+            .as_deref(),
+            Some("2026-12-01")
+        );
+    }
+
+    #[test]
+    fn extracts_deadline_with_context_text() {
+        assert_eq!(
+            extract_deadline(
+                "[팬플러스 CMS, 03/23 (월)] review",
+                NaiveDate::from_ymd_opt(2026, 3, 20).expect("date")
+            )
+            .as_deref(),
+            Some("2026-03-23")
+        );
+    }
+
+    #[test]
+    fn extracts_deadline_with_dot_separator() {
+        assert_eq!(
+            extract_deadline(
+                "[리뷰 요청/2.24(화)] review",
+                NaiveDate::from_ymd_opt(2026, 2, 20).expect("date")
+            )
+            .as_deref(),
+            Some("2026-02-24")
+        );
+    }
+
+    #[test]
+    fn extracts_relative_deadline() {
+        assert_eq!(
+            extract_deadline(
+                "[리뷰 요청/명일] review",
+                NaiveDate::from_ymd_opt(2026, 3, 23).expect("date")
+            )
+            .as_deref(),
+            Some("2026-03-24")
+        );
+        assert_eq!(
+            extract_deadline(
+                "[리뷰 요청/금일] review",
+                NaiveDate::from_ymd_opt(2026, 3, 23).expect("date")
+            )
+            .as_deref(),
+            Some("2026-03-23")
+        );
+    }
+
+    #[test]
+    fn extracts_next_weekday_deadline() {
+        assert_eq!(
+            extract_deadline(
+                "[리뷰 요청/차주 월] review",
+                NaiveDate::from_ymd_opt(2026, 3, 18).expect("date")
+            )
+            .as_deref(),
+            Some("2026-03-23")
+        );
+    }
+
+    #[test]
+    fn parses_slack_timestamp_to_local_date() {
+        assert_eq!(
+            slack_ts_to_local_date("1773993541.736359")
+                .map(|value| value.to_string())
+                .as_deref(),
+            Some("2026-03-20")
+        );
     }
 }

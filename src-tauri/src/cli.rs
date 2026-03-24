@@ -201,7 +201,12 @@ fn run_dump(format: &str) -> Result<()> {
     }
     let config = AppConfig::load_or_default()?;
     let store = store()?;
-    let dump = store.dump(config.done_menu_limit, "OK", store.last_error_message()?)?;
+    let dump = store.dump(
+        config.done_menu_limit,
+        "OK",
+        store.last_error_message()?,
+        &config.github_username,
+    )?;
     println!("{}", serde_json::to_string_pretty(&dump)?);
     Ok(())
 }

@@ -5,7 +5,12 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     config,
-    models::{GithubEvent, ReviewDump, ReviewRequest, SyncState, TrayState, format_last_sync},
+    models::{
+        GithubEvent, ReviewDump, ReviewRequest, ReviewStatus, SyncState, TrayState,
+        format_last_sync,
+    },
+    providers::slack::{extract_deadline, slack_ts_to_local_date},
+    services::review_state::classify_review_request,
 };
 
 pub trait ReviewStore: Send + Sync {
@@ -14,6 +19,13 @@ pub trait ReviewStore: Send + Sync {
     fn review_request_exists(&self, slack_message_ts: &str, pr_key: &str) -> Result<bool>;
     fn upsert_review_request(&self, request: &ReviewRequest) -> Result<()>;
     fn tracked_pr_keys(&self) -> Result<Vec<String>>;
+    fn refresh_review_request_pr_metadata(
+        &self,
+        pr_key: &str,
+        pr_title: &str,
+        pr_author_login: Option<&str>,
+        pr_merged_at: Option<&str>,
+    ) -> Result<()>;
     fn latest_event_at_for_pr(&self, pr_key: &str) -> Result<Option<String>>;
     fn github_event_exists(&self, event_id: &str) -> Result<bool>;
     fn insert_github_event(&self, event: &GithubEvent) -> Result<()>;
@@ -25,8 +37,19 @@ pub trait ReviewStore: Send + Sync {
     ) -> Result<u64>;
     fn get_sync_state(&self, source: &str) -> Result<SyncState>;
     fn save_sync_state(&self, sync_state: &SyncState) -> Result<()>;
-    fn dump(&self, done_limit: usize, status: &str, last_error: Option<String>) -> Result<ReviewDump>;
-    fn tray_state(&self, status: &str, last_error: Option<String>) -> Result<TrayState>;
+    fn dump(
+        &self,
+        done_limit: usize,
+        status: &str,
+        last_error: Option<String>,
+        github_username: &str,
+    ) -> Result<ReviewDump>;
+    fn tray_state(
+        &self,
+        status: &str,
+        last_error: Option<String>,
+        github_username: &str,
+    ) -> Result<TrayState>;
     fn last_sync_at(&self) -> Result<Option<String>>;
     fn last_error_message(&self) -> Result<Option<String>>;
 }
@@ -109,6 +132,86 @@ impl SqliteStore {
             .next()
             .and_then(|row| row.get(field).and_then(|value| value.as_str()).map(|value| value.to_string())))
     }
+
+    fn categorized_requests(
+        &self,
+        github_username: &str,
+    ) -> Result<(
+        Vec<ReviewRequest>,
+        Vec<ReviewRequest>,
+        Vec<ReviewRequest>,
+        Vec<GithubEvent>,
+    )> {
+        let requests = self.query_json::<ReviewRequest>(
+            "SELECT * FROM review_requests ORDER BY created_at DESC;",
+        )?;
+        let all_events = self.query_json::<GithubEvent>(
+            "SELECT * FROM github_events ORDER BY event_at DESC;",
+        )?;
+        let mut pending = Vec::new();
+        let mut done = Vec::new();
+        let mut update = Vec::new();
+
+        for mut request in requests {
+            if request.deadline_date.is_none() {
+                if let Some(base_date) = slack_ts_to_local_date(&request.slack_message_ts) {
+                    request.deadline_date = extract_deadline(&request.slack_text, base_date);
+                }
+            }
+            let request_events: Vec<GithubEvent> = all_events
+                .iter()
+                .filter(|event| event.pr_key == request.pr_key)
+                .cloned()
+                .collect();
+            let category = classify_review_request(&request, &request_events, github_username);
+            match category {
+                Some(ReviewStatus::Pending) => {
+                    request.status = ReviewStatus::Pending.as_str().to_string();
+                    pending.push(request);
+                }
+                Some(ReviewStatus::Done) => {
+                    request.status = ReviewStatus::Done.as_str().to_string();
+                    done.push(request);
+                }
+                Some(ReviewStatus::Update) => {
+                    request.status = ReviewStatus::Update.as_str().to_string();
+                    update.push(request);
+                }
+                None => {}
+            }
+        }
+
+        pending.sort_by(|left, right| {
+            left.deadline_date
+                .cmp(&right.deadline_date)
+                .then_with(|| right.created_at.cmp(&left.created_at))
+        });
+        done.sort_by(|left, right| {
+            right
+                .completed_at
+                .as_deref()
+                .or(right.pr_merged_at.as_deref())
+                .unwrap_or(&right.updated_at)
+                .cmp(
+                    &left
+                        .completed_at
+                        .as_deref()
+                        .or(left.pr_merged_at.as_deref())
+                        .unwrap_or(&left.updated_at),
+                )
+        });
+        update.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+
+        Ok((pending, done, update, all_events))
+    }
+
+    fn execute_allow_duplicate_column(&self, sql: &str) -> Result<()> {
+        match self.execute(sql) {
+            Ok(()) => Ok(()),
+            Err(error) if error.to_string().contains("duplicate column name") => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 impl ReviewStore for SqliteStore {
@@ -123,6 +226,8 @@ impl ReviewStore for SqliteStore {
               repo_owner TEXT NOT NULL,
               repo_name TEXT NOT NULL,
               pr_number INTEGER NOT NULL,
+              pr_author_login TEXT,
+              pr_merged_at TEXT,
               requester_slack_user_id TEXT NOT NULL,
               requester_display_name TEXT NOT NULL,
               slack_channel_id TEXT,
@@ -169,6 +274,12 @@ impl ReviewStore for SqliteStore {
               consecutive_failures INTEGER NOT NULL DEFAULT 0
             );
             "#,
+        )?;
+        self.execute_allow_duplicate_column(
+            "ALTER TABLE review_requests ADD COLUMN pr_author_login TEXT;",
+        )?;
+        self.execute_allow_duplicate_column(
+            "ALTER TABLE review_requests ADD COLUMN pr_merged_at TEXT;",
         )
     }
 
@@ -194,11 +305,13 @@ impl ReviewStore for SqliteStore {
             "
             INSERT INTO review_requests (
               id, pr_key, pr_url, pr_title, repo_owner, repo_name, pr_number,
+              pr_author_login, pr_merged_at,
               requester_slack_user_id, requester_display_name, slack_channel_id,
               slack_message_ts, slack_permalink, slack_text, deadline_date, status,
               completed_at, completion_event_id, created_at, updated_at
             ) VALUES (
               {id}, {pr_key}, {pr_url}, {pr_title}, {repo_owner}, {repo_name}, {pr_number},
+              {pr_author_login}, {pr_merged_at},
               {requester_slack_user_id}, {requester_display_name}, {slack_channel_id},
               {slack_message_ts}, {slack_permalink}, {slack_text}, {deadline_date}, {status},
               {completed_at}, {completion_event_id}, {created_at}, {updated_at}
@@ -209,6 +322,8 @@ impl ReviewStore for SqliteStore {
               repo_owner = excluded.repo_owner,
               repo_name = excluded.repo_name,
               pr_number = excluded.pr_number,
+              pr_author_login = excluded.pr_author_login,
+              pr_merged_at = excluded.pr_merged_at,
               requester_slack_user_id = excluded.requester_slack_user_id,
               requester_display_name = excluded.requester_display_name,
               slack_channel_id = excluded.slack_channel_id,
@@ -224,6 +339,8 @@ impl ReviewStore for SqliteStore {
             repo_owner = Self::sql_string(&request.repo_owner),
             repo_name = Self::sql_string(&request.repo_name),
             pr_number = request.pr_number,
+            pr_author_login = Self::sql_optional(request.pr_author_login.as_deref()),
+            pr_merged_at = Self::sql_optional(request.pr_merged_at.as_deref()),
             requester_slack_user_id = Self::sql_string(&request.requester_slack_user_id),
             requester_display_name = Self::sql_string(&request.requester_display_name),
             slack_channel_id = Self::sql_optional(request.slack_channel_id.as_deref()),
@@ -250,6 +367,29 @@ impl ReviewStore for SqliteStore {
             .into_iter()
             .map(|row| row.pr_key)
             .collect())
+    }
+
+    fn refresh_review_request_pr_metadata(
+        &self,
+        pr_key: &str,
+        pr_title: &str,
+        pr_author_login: Option<&str>,
+        pr_merged_at: Option<&str>,
+    ) -> Result<()> {
+        let sql = format!(
+            "
+            UPDATE review_requests
+            SET pr_title = {pr_title},
+                pr_author_login = {pr_author_login},
+                pr_merged_at = {pr_merged_at}
+            WHERE pr_key = {pr_key};
+            ",
+            pr_title = Self::sql_string(pr_title),
+            pr_author_login = Self::sql_optional(pr_author_login),
+            pr_merged_at = Self::sql_optional(pr_merged_at),
+            pr_key = Self::sql_string(pr_key),
+        );
+        self.execute(&sql)
     }
 
     fn latest_event_at_for_pr(&self, pr_key: &str) -> Result<Option<String>> {
@@ -370,33 +510,35 @@ impl ReviewStore for SqliteStore {
         self.execute(&sql)
     }
 
-    fn dump(&self, done_limit: usize, status: &str, last_error: Option<String>) -> Result<ReviewDump> {
-        let pending = self.query_json::<ReviewRequest>(
-            "SELECT * FROM review_requests WHERE status = 'pending' ORDER BY deadline_date IS NULL, deadline_date ASC, created_at DESC;",
-        )?;
-        let done = self.query_json::<ReviewRequest>(&format!(
-            "SELECT * FROM review_requests WHERE status = 'done' ORDER BY completed_at DESC LIMIT {};",
-            done_limit
-        ))?;
-        let recent_events = self.query_json::<GithubEvent>(
-            "SELECT * FROM github_events ORDER BY event_at DESC LIMIT 20;",
-        )?;
+    fn dump(
+        &self,
+        done_limit: usize,
+        status: &str,
+        last_error: Option<String>,
+        github_username: &str,
+    ) -> Result<ReviewDump> {
+        let (pending, mut done, update, all_events) = self.categorized_requests(github_username)?;
+        done.truncate(done_limit);
         Ok(ReviewDump {
             pending,
             done,
-            recent_events,
-            tray_state: self.tray_state(status, last_error)?,
+            update,
+            recent_events: all_events.into_iter().take(20).collect(),
+            tray_state: self.tray_state(status, last_error, github_username)?,
         })
     }
 
-    fn tray_state(&self, status: &str, last_error: Option<String>) -> Result<TrayState> {
-        let pending_count =
-            self.query_scalar_i64("SELECT COUNT(*) AS value FROM review_requests WHERE status = 'pending';")?;
-        let done_count =
-            self.query_scalar_i64("SELECT COUNT(*) AS value FROM review_requests WHERE status = 'done';")?;
+    fn tray_state(
+        &self,
+        status: &str,
+        last_error: Option<String>,
+        github_username: &str,
+    ) -> Result<TrayState> {
+        let (pending, done, update, _) = self.categorized_requests(github_username)?;
         Ok(TrayState {
-            pending_count: pending_count as u64,
-            done_count: done_count as u64,
+            pending_count: pending.len() as u64,
+            done_count: done.len() as u64,
+            update_count: update.len() as u64,
             last_sync_at: format_last_sync(self.last_sync_at()?.as_deref()),
             status: status.to_string(),
             last_error,

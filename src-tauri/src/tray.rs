@@ -11,6 +11,7 @@ use crate::{config::AppConfig, db::ReviewStore, models::TrayState, services::syn
 
 const MENU_PENDING_ID: &str = "pending";
 const MENU_DONE_ID: &str = "done";
+const MENU_UPDATE_ID: &str = "update";
 const MENU_LAST_SYNC_ID: &str = "last_sync";
 const MENU_STATUS_ID: &str = "status";
 const MENU_SYNC_NOW_ID: &str = "sync_now";
@@ -22,6 +23,7 @@ const MENU_QUIT_ID: &str = "quit";
 pub struct TrayController {
     pending_item: MenuItem<Wry>,
     done_item: MenuItem<Wry>,
+    update_item: MenuItem<Wry>,
     last_sync_item: MenuItem<Wry>,
     status_item: MenuItem<Wry>,
     show_last_error_item: MenuItem<Wry>,
@@ -33,6 +35,7 @@ impl TrayController {
         let app_handle = app.handle().clone();
         let pending_item = MenuItem::with_id(app, MENU_PENDING_ID, "Pending: 0", false, None::<&str>)?;
         let done_item = MenuItem::with_id(app, MENU_DONE_ID, "Done: 0", false, None::<&str>)?;
+        let update_item = MenuItem::with_id(app, MENU_UPDATE_ID, "Update: 0", false, None::<&str>)?;
         let last_sync_item =
             MenuItem::with_id(app, MENU_LAST_SYNC_ID, "Last Sync: never", false, None::<&str>)?;
         let status_item = MenuItem::with_id(app, MENU_STATUS_ID, "Status: OK", false, None::<&str>)?;
@@ -54,6 +57,7 @@ impl TrayController {
             &[
                 &pending_item,
                 &done_item,
+                &update_item,
                 &last_sync_item,
                 &status_item,
                 &separator,
@@ -86,6 +90,7 @@ impl TrayController {
         Ok(Arc::new(Self {
             pending_item,
             done_item,
+            update_item,
             last_sync_item,
             status_item,
             show_last_error_item,
@@ -98,6 +103,8 @@ impl TrayController {
             .set_text(format!("Pending: {}", tray_state.pending_count))?;
         self.done_item
             .set_text(format!("Done: {}", tray_state.done_count))?;
+        self.update_item
+            .set_text(format!("Update: {}", tray_state.update_count))?;
         self.last_sync_item.set_text(format!(
             "Last Sync: {}",
             tray_state

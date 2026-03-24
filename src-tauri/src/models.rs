@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub enum ReviewStatus {
     Pending,
     Done,
+    Update,
 }
 
 impl ReviewStatus {
@@ -15,6 +16,7 @@ impl ReviewStatus {
         match self {
             Self::Pending => "pending",
             Self::Done => "done",
+            Self::Update => "update",
         }
     }
 }
@@ -54,6 +56,16 @@ pub struct GithubPullRef {
 }
 
 impl GithubPullRef {
+    pub fn from_key(value: &str) -> Option<Self> {
+        let (repo_path, number) = value.split_once('#')?;
+        let (owner, repo) = repo_path.split_once('/')?;
+        Some(Self {
+            owner: owner.to_string(),
+            repo: repo.to_string(),
+            number: number.parse::<i64>().ok()?,
+        })
+    }
+
     pub fn key(&self) -> String {
         format!("{}/{}#{}", self.owner, self.repo, self.number)
     }
@@ -75,6 +87,8 @@ pub struct ReviewRequest {
     pub repo_owner: String,
     pub repo_name: String,
     pub pr_number: i64,
+    pub pr_author_login: Option<String>,
+    pub pr_merged_at: Option<String>,
     pub requester_slack_user_id: String,
     pub requester_display_name: String,
     pub slack_channel_id: Option<String>,
@@ -93,6 +107,8 @@ impl ReviewRequest {
     pub fn new(
         pull: &GithubPullRef,
         pr_title: String,
+        pr_author_login: Option<String>,
+        pr_merged_at: Option<String>,
         requester_slack_user_id: String,
         requester_display_name: String,
         slack_channel_id: Option<String>,
@@ -110,6 +126,8 @@ impl ReviewRequest {
             repo_owner: pull.owner.clone(),
             repo_name: pull.repo.clone(),
             pr_number: pull.number,
+            pr_author_login,
+            pr_merged_at,
             requester_slack_user_id,
             requester_display_name,
             slack_channel_id,
@@ -124,6 +142,13 @@ impl ReviewRequest {
             updated_at: now,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullRequestMetadata {
+    pub title: String,
+    pub author_login: Option<String>,
+    pub merged_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +201,7 @@ impl SyncState {
 pub struct TrayState {
     pub pending_count: u64,
     pub done_count: u64,
+    pub update_count: u64,
     pub last_sync_at: Option<String>,
     pub status: String,
     pub last_error: Option<String>,
@@ -185,6 +211,7 @@ pub struct TrayState {
 pub struct ReviewDump {
     pub pending: Vec<ReviewRequest>,
     pub done: Vec<ReviewRequest>,
+    pub update: Vec<ReviewRequest>,
     pub recent_events: Vec<GithubEvent>,
     pub tray_state: TrayState,
 }

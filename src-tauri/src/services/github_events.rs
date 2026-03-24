@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::{
     config::AppConfig,
     db::ReviewStore,
-    models::{SyncState, utc_now_string},
+    models::{GithubPullRef, SyncState, utc_now_string},
     providers::GithubProvider,
     services::review_state::should_mark_done,
 };
@@ -25,6 +25,19 @@ pub fn run(
 ) -> Result<GithubSyncOutcome> {
     let sync_state = store.get_sync_state(GITHUB_SYNC_SOURCE)?;
     let tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
+    for pr_key in &tracked {
+        let Some(pull) = GithubPullRef::from_key(pr_key) else {
+            continue;
+        };
+        if let Ok(metadata) = github_provider.fetch_pr_metadata(&pull) {
+            let _ = store.refresh_review_request_pr_metadata(
+                pr_key,
+                &metadata.title,
+                metadata.author_login.as_deref(),
+                metadata.merged_at.as_deref(),
+            );
+        }
+    }
     let poll_result =
         github_provider.fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
 
@@ -53,6 +66,14 @@ pub fn run(
             Some(pull) if thread.subject_type == "PullRequest" && tracked.contains(&pull.key()) => pull,
             _ => continue,
         };
+        if let Ok(metadata) = github_provider.fetch_pr_metadata(pull) {
+            let _ = store.refresh_review_request_pr_metadata(
+                &pull.key(),
+                &metadata.title,
+                metadata.author_login.as_deref(),
+                metadata.merged_at.as_deref(),
+            );
+        }
         let since = store.latest_event_at_for_pr(&pull.key())?;
         let events = github_provider.fetch_events_for_thread(
             &thread,

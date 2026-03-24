@@ -3,7 +3,10 @@ pub mod slack;
 
 use anyhow::Result;
 
-use crate::models::{GithubEvent, GithubPullRef, GithubNotificationThread, NotificationsPollResult, SlackMessageRef, SyncState};
+use crate::models::{
+    GithubEvent, GithubNotificationThread, GithubPullRef, NotificationsPollResult,
+    PullRequestMetadata, SlackMessageRef, SyncState,
+};
 
 pub trait SlackProvider: Send + Sync {
     fn search_messages(&self, keyword: &str) -> Result<Vec<SlackMessageRef>>;
@@ -13,7 +16,7 @@ pub trait SlackProvider: Send + Sync {
 
 pub trait GithubProvider: Send + Sync {
     fn current_user_login(&self) -> Result<String>;
-    fn fetch_pr_title(&self, pull: &GithubPullRef) -> Result<String>;
+    fn fetch_pr_metadata(&self, pull: &GithubPullRef) -> Result<PullRequestMetadata>;
     fn fetch_notifications(
         &self,
         sync_state: &SyncState,

@@ -14,7 +14,7 @@ use crate::{
     keychain::{CredentialStore, GITHUB_TOKEN_ACCOUNT},
     models::{
         EventKind, GithubEvent, GithubNotificationThread, GithubPullRef, NotificationsPollResult,
-        SyncState, utc_now_string,
+        PullRequestMetadata, SyncState, utc_now_string,
     },
 };
 
@@ -274,13 +274,17 @@ impl super::GithubProvider for LocalGithubProvider {
         Ok(response.login)
     }
 
-    fn fetch_pr_title(&self, pull: &GithubPullRef) -> Result<String> {
+    fn fetch_pr_metadata(&self, pull: &GithubPullRef) -> Result<PullRequestMetadata> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls/{}",
             pull.owner, pull.repo, pull.number
         );
         let response: PullRequestResponse = self.request_json(&url)?;
-        Ok(response.title)
+        Ok(PullRequestMetadata {
+            title: response.title,
+            author_login: response.user.and_then(|user| user.login),
+            merged_at: response.merged_at,
+        })
     }
 
     fn fetch_notifications(
@@ -402,6 +406,8 @@ struct CurrentUser {
 #[derive(Debug, Deserialize)]
 struct PullRequestResponse {
     title: String,
+    merged_at: Option<String>,
+    user: Option<GithubActor>,
 }
 
 #[derive(Debug, Deserialize)]

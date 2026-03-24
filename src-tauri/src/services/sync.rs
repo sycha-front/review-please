@@ -101,7 +101,9 @@ impl LocalSyncCoordinator {
 
     fn snapshot(&self) -> Result<TrayState> {
         let status = self.status.lock().expect("status lock").clone();
-        self.store.tray_state(&status.status, status.last_error)
+        let config = self.current_config();
+        self.store
+            .tray_state(&status.status, status.last_error, &config.github_username)
     }
 
     fn record_failure(&self, source: &str, error: &str) -> Result<u64> {

@@ -53,10 +53,15 @@ pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String>
         .runtime_config
         .read()
         .map_err(|_| "failed to read runtime config".to_string())?
-        .done_menu_limit;
+        .clone();
     state
         .store
-        .dump(done_menu_limit, &status, last_error)
+        .dump(
+            done_menu_limit.done_menu_limit,
+            &status,
+            last_error,
+            &done_menu_limit.github_username,
+        )
         .map_err(|error| error.to_string())
 }
 

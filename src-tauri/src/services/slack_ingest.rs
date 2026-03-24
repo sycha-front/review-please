@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use chrono::{Datelike, Duration, Local};
+use chrono::{Duration, Local};
 
 use crate::{
     config::AppConfig,
@@ -10,7 +10,7 @@ use crate::{
     providers::{GithubProvider, SlackProvider},
 };
 
-use crate::providers::slack::{extract_deadline, extract_pull_requests};
+use crate::providers::slack::{extract_deadline, extract_pull_requests, slack_ts_to_local_date};
 
 pub const SLACK_SYNC_SOURCE: &str = "slack_search";
 
@@ -29,7 +29,6 @@ pub fn run(
     let sync_state = store.get_sync_state(SLACK_SYNC_SOURCE)?;
     let last_seen = sync_state.last_seen_slack_ts.as_deref();
     let mut outcome = SlackSyncOutcome::default();
-    let current_year = Local::now().year();
     let query = if config.lookback_days > 0 {
         let after = (Local::now() - Duration::days(config.lookback_days as i64))
             .format("%Y-%m-%d")
@@ -52,7 +51,8 @@ pub fn run(
         if pulls.is_empty() {
             continue;
         }
-        let deadline = extract_deadline(&message.text, current_year);
+        let base_date = slack_ts_to_local_date(&message.ts).unwrap_or_else(|| Local::now().date_naive());
+        let deadline = extract_deadline(&message.text, base_date);
         let display_name = match slack_provider.fetch_user_display_name(&message.user_id) {
             Ok(Some(value)) => value,
             Ok(None) => message.user_id.clone(),
@@ -82,12 +82,16 @@ pub fn run(
             if !store.review_request_exists(&message.ts, &pull.key())? {
                 outcome.new_pending_count += 1;
             }
-            let pr_title = github_provider
-                .fetch_pr_title(&pull)
-                .unwrap_or_else(|_| pull.key());
+            let metadata = github_provider.fetch_pr_metadata(&pull).ok();
+            let pr_title = metadata
+                .as_ref()
+                .map(|value| value.title.clone())
+                .unwrap_or_else(|| pull.key());
             let request = ReviewRequest::new(
                 &pull,
                 pr_title,
+                metadata.as_ref().and_then(|value| value.author_login.clone()),
+                metadata.as_ref().and_then(|value| value.merged_at.clone()),
                 message.user_id.clone(),
                 display_name.clone(),
                 message.channel_id.clone(),

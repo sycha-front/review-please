@@ -6,8 +6,8 @@ use serde::de::DeserializeOwned;
 use crate::{
     config,
     models::{
-        GithubEvent, ReviewDump, ReviewRequest, ReviewStatus, SyncState, TrayState,
-        format_last_sync,
+        format_last_sync, utc_now_string, GithubEvent, ReviewDump, ReviewRequest, ReviewStatus,
+        SyncState, TrayState,
     },
     providers::slack::{extract_deadline, slack_ts_to_local_date},
     services::review_state::classify_review_request,
@@ -18,6 +18,16 @@ pub trait ReviewStore: Send + Sync {
     fn clear_state(&self) -> Result<()>;
     fn review_request_exists(&self, slack_message_ts: &str, pr_key: &str) -> Result<bool>;
     fn upsert_review_request(&self, request: &ReviewRequest) -> Result<()>;
+    fn update_review_request_deadline(
+        &self,
+        review_request_id: &str,
+        deadline_date: &str,
+    ) -> Result<()>;
+    fn set_review_request_status_manual(
+        &self,
+        review_request_id: &str,
+        status: ReviewStatus,
+    ) -> Result<()>;
     fn tracked_pr_keys(&self) -> Result<Vec<String>>;
     fn refresh_review_request_pr_metadata(
         &self,
@@ -91,7 +101,9 @@ impl SqliteStore {
             .arg(&self.db_path)
             .arg(sql)
             .output()
-            .with_context(|| format!("failed to run sqlite3 -json for {}", self.db_path.display()))?;
+            .with_context(|| {
+                format!("failed to run sqlite3 -json for {}", self.db_path.display())
+            })?;
         if !output.status.success() {
             return Err(anyhow!(
                 "{}",
@@ -99,7 +111,11 @@ impl SqliteStore {
             ));
         }
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let body = if stdout.is_empty() { "[]".to_string() } else { stdout };
+        let body = if stdout.is_empty() {
+            "[]".to_string()
+        } else {
+            stdout
+        };
         serde_json::from_str(&body).context("failed to parse sqlite json output")
     }
 
@@ -122,15 +138,21 @@ impl SqliteStore {
         struct Row {
             value: i64,
         }
-        Ok(self.query_json::<Row>(sql)?.into_iter().next().map(|row| row.value).unwrap_or_default())
+        Ok(self
+            .query_json::<Row>(sql)?
+            .into_iter()
+            .next()
+            .map(|row| row.value)
+            .unwrap_or_default())
     }
 
     fn query_scalar_string(&self, sql: &str, field: &str) -> Result<Option<String>> {
         let rows = self.query_json::<serde_json::Value>(sql)?;
-        Ok(rows
-            .into_iter()
-            .next()
-            .and_then(|row| row.get(field).and_then(|value| value.as_str()).map(|value| value.to_string())))
+        Ok(rows.into_iter().next().and_then(|row| {
+            row.get(field)
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        }))
     }
 
     fn categorized_requests(
@@ -145,9 +167,8 @@ impl SqliteStore {
         let requests = self.query_json::<ReviewRequest>(
             "SELECT * FROM review_requests ORDER BY created_at DESC;",
         )?;
-        let all_events = self.query_json::<GithubEvent>(
-            "SELECT * FROM github_events ORDER BY event_at DESC;",
-        )?;
+        let all_events =
+            self.query_json::<GithubEvent>("SELECT * FROM github_events ORDER BY event_at DESC;")?;
         let mut pending = Vec::new();
         let mut done = Vec::new();
         let mut update = Vec::new();
@@ -157,6 +178,15 @@ impl SqliteStore {
                 if let Some(base_date) = slack_ts_to_local_date(&request.slack_message_ts) {
                     request.deadline_date = extract_deadline(&request.slack_text, base_date);
                 }
+            }
+            if request.is_status_manual {
+                match request.status.as_str() {
+                    "pending" => pending.push(request),
+                    "done" => done.push(request),
+                    "update" => update.push(request),
+                    _ => {}
+                }
+                continue;
             }
             let request_events: Vec<GithubEvent> = all_events
                 .iter()
@@ -236,6 +266,7 @@ impl ReviewStore for SqliteStore {
               slack_text TEXT NOT NULL,
               deadline_date TEXT,
               status TEXT NOT NULL,
+              is_status_manual INTEGER NOT NULL DEFAULT 0,
               completed_at TEXT,
               completion_event_id TEXT,
               created_at TEXT NOT NULL,
@@ -280,6 +311,9 @@ impl ReviewStore for SqliteStore {
         )?;
         self.execute_allow_duplicate_column(
             "ALTER TABLE review_requests ADD COLUMN pr_merged_at TEXT;",
+        )?;
+        self.execute_allow_duplicate_column(
+            "ALTER TABLE review_requests ADD COLUMN is_status_manual INTEGER NOT NULL DEFAULT 0;",
         )
     }
 
@@ -307,13 +341,13 @@ impl ReviewStore for SqliteStore {
               id, pr_key, pr_url, pr_title, repo_owner, repo_name, pr_number,
               pr_author_login, pr_merged_at,
               requester_slack_user_id, requester_display_name, slack_channel_id,
-              slack_message_ts, slack_permalink, slack_text, deadline_date, status,
+              slack_message_ts, slack_permalink, slack_text, deadline_date, status, is_status_manual,
               completed_at, completion_event_id, created_at, updated_at
             ) VALUES (
               {id}, {pr_key}, {pr_url}, {pr_title}, {repo_owner}, {repo_name}, {pr_number},
               {pr_author_login}, {pr_merged_at},
               {requester_slack_user_id}, {requester_display_name}, {slack_channel_id},
-              {slack_message_ts}, {slack_permalink}, {slack_text}, {deadline_date}, {status},
+              {slack_message_ts}, {slack_permalink}, {slack_text}, {deadline_date}, {status}, {is_status_manual},
               {completed_at}, {completion_event_id}, {created_at}, {updated_at}
             )
             ON CONFLICT(slack_message_ts, pr_key) DO UPDATE SET
@@ -349,10 +383,59 @@ impl ReviewStore for SqliteStore {
             slack_text = Self::sql_string(&request.slack_text),
             deadline_date = Self::sql_optional(request.deadline_date.as_deref()),
             status = Self::sql_string(&request.status),
+            is_status_manual = if request.is_status_manual { 1 } else { 0 },
             completed_at = Self::sql_optional(request.completed_at.as_deref()),
             completion_event_id = Self::sql_optional(request.completion_event_id.as_deref()),
             created_at = Self::sql_string(&request.created_at),
             updated_at = Self::sql_string(&request.updated_at),
+        );
+        self.execute(&sql)
+    }
+
+    fn update_review_request_deadline(
+        &self,
+        review_request_id: &str,
+        deadline_date: &str,
+    ) -> Result<()> {
+        let updated_at = utc_now_string();
+        let sql = format!(
+            "
+            UPDATE review_requests
+            SET deadline_date = {deadline_date},
+                updated_at = {updated_at}
+            WHERE id = {review_request_id};
+            ",
+            deadline_date = Self::sql_string(deadline_date),
+            updated_at = Self::sql_string(&updated_at),
+            review_request_id = Self::sql_string(review_request_id),
+        );
+        self.execute(&sql)
+    }
+
+    fn set_review_request_status_manual(
+        &self,
+        review_request_id: &str,
+        status: ReviewStatus,
+    ) -> Result<()> {
+        let updated_at = utc_now_string();
+        let completed_at = match status {
+            ReviewStatus::Done => Self::sql_string(&updated_at),
+            _ => "NULL".to_string(),
+        };
+        let sql = format!(
+            "
+            UPDATE review_requests
+            SET status = {status},
+                is_status_manual = 1,
+                completed_at = {completed_at},
+                completion_event_id = NULL,
+                updated_at = {updated_at}
+            WHERE id = {review_request_id};
+            ",
+            status = Self::sql_string(status.as_str()),
+            completed_at = completed_at,
+            updated_at = Self::sql_string(&updated_at),
+            review_request_id = Self::sql_string(review_request_id),
         );
         self.execute(&sql)
     }
@@ -451,6 +534,7 @@ impl ReviewStore for SqliteStore {
             "
             UPDATE review_requests
             SET status = 'done',
+                is_status_manual = 0,
                 completed_at = {completed_at},
                 completion_event_id = {completion_event_id},
                 updated_at = {updated_at}

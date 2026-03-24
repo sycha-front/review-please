@@ -3,8 +3,10 @@ use tauri::State;
 
 use crate::{
     config::{self, AppConfig},
-    keychain::{CredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT, SecurityCredentialStore},
-    models::ReviewDump,
+    keychain::{
+        CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT,
+    },
+    models::{ReviewDump, ReviewStatus},
     tray::AppState,
 };
 
@@ -42,6 +44,20 @@ pub struct SaveSettingsPayload {
     pub github_token: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReviewDeadlinePayload {
+    pub review_request_id: String,
+    pub deadline_date: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReviewStatusPayload {
+    pub review_request_id: String,
+    pub status: String,
+}
+
 #[tauri::command]
 pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String> {
     let status = state.coordinator.status_label();
@@ -63,6 +79,49 @@ pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String>
             &done_menu_limit.github_username,
         )
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn update_review_deadline(
+    payload: UpdateReviewDeadlinePayload,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let deadline_date = payload.deadline_date.trim();
+    if deadline_date.is_empty() {
+        return Err("deadline_date is required".to_string());
+    }
+
+    state
+        .store
+        .update_review_request_deadline(&payload.review_request_id, deadline_date)
+        .map_err(|error| error.to_string())?;
+    state
+        .coordinator
+        .refresh_tray()
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_review_status(
+    payload: UpdateReviewStatusPayload,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let status = match payload.status.trim() {
+        "pending" => ReviewStatus::Pending,
+        "done" => ReviewStatus::Done,
+        _ => return Err("status must be either pending or done".to_string()),
+    };
+
+    state
+        .store
+        .set_review_request_status_manual(&payload.review_request_id, status)
+        .map_err(|error| error.to_string())?;
+    state
+        .coordinator
+        .refresh_tray()
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]

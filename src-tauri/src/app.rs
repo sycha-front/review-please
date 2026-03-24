@@ -9,7 +9,10 @@ use crate::{
     db::{ReviewStore, SqliteStore},
     keychain::{CredentialStore, SecurityCredentialStore},
     providers::{github::LocalGithubProvider, slack::LocalSlackProvider},
-    services::{notification::MacNotificationService, sync::{LocalSyncCoordinator, SyncCoordinator}},
+    services::{
+        notification::MacNotificationService,
+        sync::{LocalSyncCoordinator, SyncCoordinator},
+    },
     tray::{AppState, TrayController},
 };
 
@@ -18,6 +21,8 @@ pub fn run_tray_app() -> Result<()> {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_review_dump,
+            commands::update_review_deadline,
+            commands::update_review_status,
             commands::get_settings,
             commands::save_settings
         ])

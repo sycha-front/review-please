@@ -45,7 +45,6 @@ impl EventKind {
             Self::Unknown => "unknown",
         }
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,6 +96,8 @@ pub struct ReviewRequest {
     pub slack_text: String,
     pub deadline_date: Option<String>,
     pub status: String,
+    #[serde(default, deserialize_with = "deserialize_bool_from_any")]
+    pub is_status_manual: bool,
     pub completed_at: Option<String>,
     pub completion_event_id: Option<String>,
     pub created_at: String,
@@ -136,6 +137,7 @@ impl ReviewRequest {
             slack_text,
             deadline_date,
             status: ReviewStatus::Pending.as_str().to_string(),
+            is_status_manual: false,
             completed_at: None,
             completion_event_id: None,
             created_at: now.clone(),
@@ -259,9 +261,11 @@ pub fn newer_ts(candidate: &str, current: Option<&str>) -> bool {
 
 pub fn format_last_sync(value: Option<&str>) -> Option<String> {
     value.and_then(|raw| {
-        DateTime::parse_from_rfc3339(raw)
-            .ok()
-            .map(|dt| dt.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string())
+        DateTime::parse_from_rfc3339(raw).ok().map(|dt| {
+            dt.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
+        })
     })
 }
 
@@ -306,7 +310,8 @@ mod tests {
             "created_at":"2026-03-23T00:00:00Z"
         }"#;
 
-        let event: GithubEvent = serde_json::from_str(json).expect("github event should deserialize");
+        let event: GithubEvent =
+            serde_json::from_str(json).expect("github event should deserialize");
 
         assert!(event.actor_is_me);
         assert!(!event.related_to_me);

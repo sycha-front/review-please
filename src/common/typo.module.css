@@ -1,0 +1,26 @@
+.h1 {
+  color: #111827;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.h4 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.p1 {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.p3 {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.p5 {
+  font-size: 12px;
+  line-height: 1.5;
+}

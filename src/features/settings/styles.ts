@@ -3,40 +3,8 @@ import type { CSSProperties } from "react";
 export const pageStyle: CSSProperties = {
   minHeight: "100vh",
   margin: 0,
-  background: "#ffffff",
-  padding: "18px",
+  padding: "16px",
   boxSizing: "border-box",
-  fontFamily:
-    '"SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif',
-};
-
-export const panelStyle: CSSProperties = {
-  width: "100%",
-  minHeight: "calc(100vh - 36px)",
-  border: "1px solid #e5e7eb",
-  borderRadius: "12px",
-  background: "#ffffff",
-  padding: "18px",
-  boxSizing: "border-box",
-};
-
-export const headerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  marginBottom: "16px",
-};
-
-export const titleStyle: CSSProperties = {
-  color: "#111827",
-  fontSize: "22px",
-  fontWeight: 700,
-  marginBottom: "4px",
-};
-
-export const subtitleStyle: CSSProperties = {
-  color: "#6b7280",
-  fontSize: "12px",
 };
 
 export const reviewStatusStyle: CSSProperties = {
@@ -92,6 +60,7 @@ export const footerStyle: CSSProperties = {
 export const helperTextStyle: CSSProperties = {
   color: "#6b7280",
   fontSize: "12px",
+  lineHeight: "14px",
 };
 
 export const primaryButtonStyle: CSSProperties = {

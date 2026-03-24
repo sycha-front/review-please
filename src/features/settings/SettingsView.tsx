@@ -1,28 +1,18 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 
-import type { UseReviewDumpResult } from "../../hooks/useReviewDump";
 import type { UseSettingsResult } from "../../hooks/useSettings";
 import type { SettingsPayload } from "../../types/settings";
 import { SettingsForm } from "./SettingsForm";
-import { SettingsHeader } from "./SettingsHeader";
-import {
-  errorTextStyle,
-  loadingTextStyle,
-  pageStyle,
-  panelStyle,
-} from "./styles";
+import { errorTextStyle, loadingTextStyle } from "./styles";
+
+import i from "../../styles/index.module.css";
 
 type SettingsViewProps = {
-  reviewState: UseReviewDumpResult;
   settingsState: UseSettingsResult;
 };
 
-export function SettingsView({
-  reviewState,
-  settingsState,
-}: SettingsViewProps) {
-  const { error, isLoading, snapshot } = reviewState;
+export function SettingsView({ settingsState }: SettingsViewProps) {
   const {
     settings,
     error: settingsError,
@@ -67,37 +57,25 @@ export function SettingsView({
     setSaveMessage("Saved");
   }
 
-  const reviewSummary = isLoading
-    ? "Loading review data..."
-    : error
-      ? `Review error: ${error}`
-      : snapshot
-        ? `Pending ${snapshot.pending.length} / Done ${snapshot.done.length}`
-        : "No review data";
-
   return (
-    <main style={pageStyle}>
-      <div style={panelStyle}>
-        <SettingsHeader reviewSummary={reviewSummary} />
+    <section className={i.panel}>
+      {isSettingsLoading && (
+        <div style={loadingTextStyle}>Loading settings...</div>
+      )}
 
-        {isSettingsLoading && (
-          <div style={loadingTextStyle}>Loading settings...</div>
-        )}
+      {!isSettingsLoading && settingsError && (
+        <div style={errorTextStyle}>{settingsError}</div>
+      )}
 
-        {!isSettingsLoading && settingsError && (
-          <div style={errorTextStyle}>{settingsError}</div>
-        )}
-
-        {!isSettingsLoading && form && (
-          <SettingsForm
-            form={form}
-            isSaving={isSaving}
-            saveMessage={saveMessage}
-            onSubmit={handleSubmit}
-            onFieldChange={updateField}
-          />
-        )}
-      </div>
-    </main>
+      {!isSettingsLoading && form && (
+        <SettingsForm
+          form={form}
+          isSaving={isSaving}
+          saveMessage={saveMessage}
+          onSubmit={handleSubmit}
+          onFieldChange={updateField}
+        />
+      )}
+    </section>
   );
 }

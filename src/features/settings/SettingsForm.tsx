@@ -1,18 +1,14 @@
 import type { FormEvent } from "react";
 
+import Button from "../../common/button";
+import { H1 } from "../../common/typo";
 import type { SettingsPayload } from "../../types/settings";
-import {
-  footerStyle,
-  formStyle,
-  helperTextStyle,
-  primaryButtonStyle,
-  twoColumnGridStyle,
-} from "./styles";
 import {
   SettingsCheckboxField,
   SettingsNumberField,
   SettingsTextField,
 } from "./SettingsField";
+import { formStyle, helperTextStyle, twoColumnGridStyle } from "./styles";
 
 type SettingsFormProps = {
   form: SettingsPayload;
@@ -34,33 +30,34 @@ export function SettingsForm({
 }: SettingsFormProps) {
   return (
     <form onSubmit={onSubmit} style={formStyle}>
+      <H1>설정</H1>
       <SettingsTextField
-        label="Slack Mention Keyword"
+        label="Slack 멘션 키워드"
         value={form.slackMentionKeyword}
         onChange={(value) => onFieldChange("slackMentionKeyword", value)}
       />
 
       <SettingsTextField
-        label="Slack Username"
+        label="Slack 유저명"
         value={form.slackUsername}
         onChange={(value) => onFieldChange("slackUsername", value)}
       />
 
       <SettingsTextField
-        label="GitHub Username"
+        label="GitHub 유저명"
         value={form.githubUsername}
         onChange={(value) => onFieldChange("githubUsername", value)}
       />
 
       <SettingsTextField
-        label="Slack Token"
+        label="Slack 유저 토큰"
         type="password"
         value={form.slackToken}
         onChange={(value) => onFieldChange("slackToken", value)}
       />
 
       <SettingsTextField
-        label="GitHub Token"
+        label="GitHub 토큰"
         type="password"
         value={form.githubToken}
         onChange={(value) => onFieldChange("githubToken", value)}
@@ -81,12 +78,12 @@ export function SettingsForm({
 
       <div style={twoColumnGridStyle}>
         <SettingsNumberField
-          label="Slack Poll Seconds"
+          label="Slack 불러오기 간격(초)"
           value={form.slackPollIntervalSeconds}
           onChange={(value) => onFieldChange("slackPollIntervalSeconds", value)}
         />
         <SettingsNumberField
-          label="GitHub Poll Seconds"
+          label="GitHub 불러오기 간격(초)"
           value={form.githubMinPollIntervalSeconds}
           onChange={(value) =>
             onFieldChange("githubMinPollIntervalSeconds", value)
@@ -95,39 +92,36 @@ export function SettingsForm({
       </div>
 
       <SettingsCheckboxField
-        label="Notify on new pending"
+        label="리뷰 대기 중인 PR이 생겼을 때 알림"
         checked={form.notifyOnNewPending}
         onChange={(value) => onFieldChange("notifyOnNewPending", value)}
       />
 
       <SettingsCheckboxField
-        label="Notify on done"
+        label="리뷰 완료 PR이 생겼을 때 알림"
         checked={form.notifyOnDone}
         onChange={(value) => onFieldChange("notifyOnDone", value)}
       />
 
       <SettingsCheckboxField
-        label="Notify on errors"
+        label="오류가 생겼을 때 알림"
         checked={form.notifyOnErrors}
         onChange={(value) => onFieldChange("notifyOnErrors", value)}
       />
 
-      <div style={footerStyle}>
-        <div style={helperTextStyle}>
-          {saveMessage ?? "Saved values are applied to config or keychain."}
-        </div>
-        <button
-          type="submit"
-          disabled={isSaving}
-          style={{
-            ...primaryButtonStyle,
-            cursor: isSaving ? "wait" : "pointer",
-            opacity: isSaving ? 0.7 : 1,
-          }}
-        >
-          {isSaving ? "Saving..." : "Save Settings"}
-        </button>
+      <div style={helperTextStyle}>
+        {saveMessage ?? "설정은 config나 keychain에 저장됩니다."}
       </div>
+      <Button
+        type="submit"
+        disabled={isSaving}
+        style={{
+          cursor: isSaving ? "wait" : "pointer",
+          opacity: isSaving ? 0.7 : 1,
+        }}
+      >
+        {isSaving ? "Saving..." : "Save Settings"}
+      </Button>
     </form>
   );
 }

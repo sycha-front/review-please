@@ -1,0 +1,8 @@
+.panel {
+  width: 100%;
+  min-height: calc(100vh - 36px);
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 18px;
+  box-sizing: border-box;
+}

@@ -7,7 +7,7 @@
   border-radius: 999px;
 
   & > button {
-    border: none;
+    display: flex;
     background-color: transparent;
     position: relative;
     z-index: 2;
@@ -15,8 +15,9 @@
     color: var(--black);
     transition: 200ms ease-out;
 
-    display: grid;
-    grid-template-columns: 1fr 20px;
+    & p {
+      width: 100%;
+    }
   }
 
   .current {
@@ -50,4 +51,5 @@
   border-radius: 20px;
   background-color: var(--white);
   color: var(--black);
+  flex-shrink: 0;
 }

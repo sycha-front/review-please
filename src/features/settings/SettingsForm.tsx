@@ -1,14 +1,14 @@
 import type { FormEvent } from "react";
 
 import Button from "../../common/button";
-import { H1 } from "../../common/typo";
+import { H1, H4, P3 } from "../../common/typo";
 import type { SettingsPayload } from "../../types/settings";
 import {
   SettingsCheckboxField,
   SettingsNumberField,
   SettingsTextField,
 } from "./SettingsField";
-import { formStyle, helperTextStyle, twoColumnGridStyle } from "./styles";
+import { formStyle, twoColumnGridStyle } from "./styles";
 
 type SettingsFormProps = {
   form: SettingsPayload;
@@ -109,9 +109,7 @@ export function SettingsForm({
         onChange={(value) => onFieldChange("notifyOnErrors", value)}
       />
 
-      <div style={helperTextStyle}>
-        {saveMessage ?? "설정은 config나 keychain에 저장됩니다."}
-      </div>
+      <P3>설정은 로컬에만 저장됩니다.</P3>
       <Button
         type="submit"
         disabled={isSaving}
@@ -120,7 +118,7 @@ export function SettingsForm({
           opacity: isSaving ? 0.7 : 1,
         }}
       >
-        {isSaving ? "Saving..." : "Save Settings"}
+        <H4>{isSaving ? "저장 중..." : "설정 저장"}</H4>
       </Button>
     </form>
   );

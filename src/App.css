@@ -17,6 +17,8 @@
   --gray-50: #f5f5f7;
   --white: #fff;
 
+  --cubic: cubic-bezier(0.4, 0, 0.6, 1);
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -78,6 +80,11 @@ button {
 input,
 button {
   outline: none;
+}
+
+svg {
+  width: 20px;
+  height: 20px;
 }
 
 #greet-input {

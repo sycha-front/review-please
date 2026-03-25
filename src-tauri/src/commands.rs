@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::{
     config::{self, AppConfig},
@@ -7,6 +7,7 @@ use crate::{
         CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT,
     },
     models::{ReviewDump, ReviewStatus},
+    services::{launch_agent, release::ReleaseStatus},
     tray::AppState,
 };
 
@@ -16,6 +17,7 @@ pub struct SettingsPayload {
     pub slack_mention_keyword: String,
     pub slack_username: String,
     pub github_username: String,
+    pub repo_path: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
@@ -23,6 +25,7 @@ pub struct SettingsPayload {
     pub notify_on_new_pending: bool,
     pub notify_on_done: bool,
     pub notify_on_errors: bool,
+    pub launch_at_login: bool,
     pub slack_token: String,
     pub github_token: String,
 }
@@ -33,6 +36,7 @@ pub struct SaveSettingsPayload {
     pub slack_mention_keyword: String,
     pub slack_username: String,
     pub github_username: String,
+    pub repo_path: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
@@ -40,6 +44,7 @@ pub struct SaveSettingsPayload {
     pub notify_on_new_pending: bool,
     pub notify_on_done: bool,
     pub notify_on_errors: bool,
+    pub launch_at_login: bool,
     pub slack_token: String,
     pub github_token: String,
 }
@@ -56,6 +61,12 @@ pub struct UpdateReviewDeadlinePayload {
 pub struct UpdateReviewStatusPayload {
     pub review_request_id: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunAppUpdatePayload {
+    pub repo_path: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,6 +96,31 @@ pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String>
             &done_menu_limit.github_username,
         )
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_release_status() -> ReleaseStatus {
+    crate::services::release::fetch_release_status()
+}
+
+#[tauri::command]
+pub fn run_app_update(
+    payload: RunAppUpdatePayload,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    crate::services::app_update::spawn_update_process(&payload.repo_path)
+        .map_err(|error| error.to_string())?;
+
+    let app = app.clone();
+    let coordinator = state.coordinator.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let _ = coordinator.stop();
+        app.exit(0);
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -157,10 +193,13 @@ pub fn get_settings() -> Result<SettingsPayload, String> {
         .or_else(|| dotenv.get("GITHUB_TOKEN").cloned())
         .unwrap_or_default();
 
+    let launch_at_login = launch_agent::is_enabled().map_err(|error| error.to_string())?;
+
     Ok(SettingsPayload {
         slack_mention_keyword: config.slack_mention_keyword,
         slack_username: config.slack_username,
         github_username: config.github_username,
+        repo_path: config.repo_path,
         lookback_days: config.lookback_days,
         slack_poll_interval_seconds: config.slack_poll_interval_seconds,
         github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
@@ -168,6 +207,7 @@ pub fn get_settings() -> Result<SettingsPayload, String> {
         notify_on_new_pending: config.notify_on_new_pending,
         notify_on_done: config.notify_on_done,
         notify_on_errors: config.notify_on_errors,
+        launch_at_login,
         slack_token,
         github_token,
     })
@@ -182,6 +222,7 @@ pub fn save_settings(
         slack_mention_keyword: payload.slack_mention_keyword.trim().to_string(),
         slack_username: payload.slack_username.trim().to_string(),
         github_username: payload.github_username.trim().to_string(),
+        repo_path: payload.repo_path.trim().to_string(),
         lookback_days: payload.lookback_days,
         slack_poll_interval_seconds: payload.slack_poll_interval_seconds,
         github_min_poll_interval_seconds: payload.github_min_poll_interval_seconds,
@@ -189,8 +230,10 @@ pub fn save_settings(
         notify_on_new_pending: payload.notify_on_new_pending,
         notify_on_done: payload.notify_on_done,
         notify_on_errors: payload.notify_on_errors,
+        launch_at_login: payload.launch_at_login,
     };
     config.save().map_err(|error| error.to_string())?;
+    launch_agent::set_enabled(payload.launch_at_login).map_err(|error| error.to_string())?;
 
     let credentials = SecurityCredentialStore;
     if payload.slack_token.trim().is_empty() {
@@ -227,6 +270,7 @@ pub fn save_settings(
         slack_mention_keyword: config.slack_mention_keyword,
         slack_username: config.slack_username,
         github_username: config.github_username,
+        repo_path: config.repo_path,
         lookback_days: config.lookback_days,
         slack_poll_interval_seconds: config.slack_poll_interval_seconds,
         github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
@@ -234,6 +278,7 @@ pub fn save_settings(
         notify_on_new_pending: config.notify_on_new_pending,
         notify_on_done: config.notify_on_done,
         notify_on_errors: config.notify_on_errors,
+        launch_at_login: payload.launch_at_login,
         slack_token: payload.slack_token.trim().to_string(),
         github_token: payload.github_token.trim().to_string(),
     })

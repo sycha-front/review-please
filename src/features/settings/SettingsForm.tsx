@@ -50,6 +50,12 @@ export function SettingsForm({
       />
 
       <SettingsTextField
+        label="로컬 repo 경로"
+        value={form.repoPath}
+        onChange={(value) => onFieldChange("repoPath", value)}
+      />
+
+      <SettingsTextField
         label="Slack 유저 토큰"
         type="password"
         value={form.slackToken}
@@ -107,6 +113,12 @@ export function SettingsForm({
         label="오류가 생겼을 때 알림"
         checked={form.notifyOnErrors}
         onChange={(value) => onFieldChange("notifyOnErrors", value)}
+      />
+
+      <SettingsCheckboxField
+        label="로그인 시 자동 실행"
+        checked={form.launchAtLogin}
+        onChange={(value) => onFieldChange("launchAtLogin", value)}
       />
 
       <P3>설정은 로컬에만 저장됩니다.</P3>

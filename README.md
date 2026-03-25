@@ -2,86 +2,151 @@
 
 macOS 시스템 트레이에서 Slack 멘션 기반 PR 리뷰 요청을 추적하는 Tauri 앱이다.
 
-## 실행 방법
+자동업데이트 대신, 개발자 팀이 쓰기 쉬운 반자동 배포 방식으로 운영한다.
 
-사전 조건:
+## 운영 방식
+
+- 앱은 한 번 빌드해서 `~/Applications/review-please.app` 에 설치한다.
+- 평소 실행은 앱 번들을 직접 열어서 한다.
+- 로그인 시 자동 실행은 앱 설정에서 `LaunchAgent`로 켜고 끈다.
+- 업데이트는 repo에서 최신 코드를 당긴 뒤 스크립트로 다시 빌드/설치한다.
+- 앱 첫 실행 시 설정의 `로컬 repo 경로`는 현재 빌드에 사용된 저장소 경로를 기본값으로 채운다.
+
+즉, `yarn tauri dev`는 개발할 때만 쓰고, 평소 사용은 설치된 앱으로 한다.
+
+## 사전 조건
 
 - macOS
-- `yarn`
+- Node.js + yarn
 - Rust toolchain
+- Xcode Command Line Tools
 - 시스템 기본 명령 사용 가능
   - `curl`
-  - `sqlite3`
   - `security`
+  - `sqlite3`
   - `osascript`
+  - `launchctl`
 
-개발 서버 실행:
+## 최초 설치
+
+1. 저장소 clone
+
+```bash
+git clone git@github.com:sycha-front/pr-review-please.git
+cd pr-review-please
+```
+
+2. 앱 빌드 + 설치
+
+```bash
+yarn app:install
+```
+
+설치가 끝나면 아래 위치에 앱이 생긴다.
+
+```text
+~/Applications/review-please.app
+```
+
+3. 앱 실행
+
+```bash
+open ~/Applications/review-please.app
+```
+
+앱 안의 설정에서 `로그인 시 자동 실행`을 켜면 다음 로그인부터 자동으로 실행된다.
+
+## 업데이트
+
+최신 코드를 받아서 다시 빌드/설치하고 앱을 다시 띄운다.
+
+```bash
+yarn app:update
+```
+
+앱 안에서도 새 버전이 감지되면 헤더 아래 배너에서 `원클릭 업데이트`를 눌러 같은 작업을 시작할 수 있다.
+이 기능은 설정의 `로컬 repo 경로`를 사용한다.
+
+내부적으로 아래를 수행한다.
+
+- `git pull --ff-only`
+- `yarn install --frozen-lockfile`
+- 앱 재빌드
+- `~/Applications/review-please.app` 덮어쓰기
+- 실행 중인 앱 종료 후 재실행
+
+## 로그인 자동 실행 해제
+
+```bash
+yarn app:login-disable
+```
+
+스크립트 방식도 남아 있지만, 평소에는 앱 설정의 토글을 쓰는 쪽을 권장한다.
+
+## 앱 제거
+
+```bash
+yarn app:uninstall
+```
+
+이 명령은 아래를 수행한다.
+
+- 로그인 자동 실행 해제
+- 실행 중인 앱 종료
+- `~/Applications/review-please.app` 삭제
+
+## 개발 모드
+
+UI나 Rust 로직을 개발할 때만 dev 모드를 쓴다.
 
 ```bash
 yarn install
 yarn tauri dev
 ```
 
-프로덕션 빌드:
+## 자주 쓰는 명령
 
 ```bash
-yarn tauri build
+yarn app:build
+yarn app:install
+yarn app:update
+yarn app:login-enable
+yarn app:login-disable
+yarn app:uninstall
 ```
 
-로컬 릴리스 빌드에서 updater까지 포함하려면:
+## 설정/데이터 위치
 
-```bash
-export TAURI_UPDATER_PUBKEY="여기에 updater public key"
-export TAURI_SIGNING_PRIVATE_KEY="$HOME/.tauri/review-please.key"
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
-yarn tauri build
-```
+- 설정 파일
+  - `~/Library/Application Support/review-please/config.toml`
+- 로컬 DB
+  - `~/Library/Application Support/review-please/state.sqlite3`
+- 앱 토큰
+  - macOS Keychain 저장
 
-CLI 설정 예시:
-
-```bash
-cargo run --manifest-path src-tauri/Cargo.toml -- setup \
-  --keyword "@review-me" \
-  --slack-token xoxp-... \
-  --github-token ghp_...
-```
-
-상태 확인:
-
-```bash
-cargo run --manifest-path src-tauri/Cargo.toml -- doctor
-cargo run --manifest-path src-tauri/Cargo.toml -- dump --format json
-cargo run --manifest-path src-tauri/Cargo.toml -- sync-once
-```
-
-로컬 상태 초기화:
-
-```bash
-cargo run --manifest-path src-tauri/Cargo.toml -- reset-state
-cargo run --manifest-path src-tauri/Cargo.toml -- clear-credentials
-```
-
-## 동작 방식
-
-- 앱 시작 시 Dock 아이콘은 숨기고 시스템 트레이에 상주한다.
-- 트레이 아이콘을 왼쪽 클릭하면 아이콘 아래쪽에 팝업 윈도우가 뜬다.
-- 팝업 윈도우는 현재 흰 배경 기본 화면이며, 내부에 `Main` 컨테이너 하나만 둔 상태다.
-- 트레이 메뉴는 오른쪽 클릭으로 열 수 있다.
-- Slack/GitHub 동기화는 Rust 백엔드에서 수행한다.
-- 앱 시작 시 GitHub Releases 기반 업데이트를 자동 확인한다.
-- 트레이 메뉴의 `Check for Updates`로 수동 확인도 할 수 있다.
+기존 `pr-please` 경로를 쓰고 있었다면 앱 시작 시 자동으로 `review-please` 경로로 옮긴다.
 
 ## 폴더 구조
 
 ```text
 .
+├── scripts
+│   ├── build-app.sh
+│   ├── install-app.sh
+│   ├── update-app.sh
+│   ├── enable-login.sh
+│   ├── disable-login.sh
+│   └── uninstall-app.sh
 ├── src
 │   ├── App.tsx
+│   ├── features
+│   ├── hooks
 │   └── main.tsx
 ├── src-tauri
 │   ├── src
 │   │   ├── app.rs
 │   │   ├── cli.rs
+│   │   ├── commands.rs
 │   │   ├── config.rs
 │   │   ├── db.rs
 │   │   ├── keychain.rs
@@ -89,16 +154,7 @@ cargo run --manifest-path src-tauri/Cargo.toml -- clear-credentials
 │   │   ├── main.rs
 │   │   ├── models.rs
 │   │   ├── providers
-│   │   │   ├── github.rs
-│   │   │   ├── mod.rs
-│   │   │   └── slack.rs
 │   │   ├── services
-│   │   │   ├── github_events.rs
-│   │   │   ├── mod.rs
-│   │   │   ├── notification.rs
-│   │   │   ├── review_state.rs
-│   │   │   ├── slack_ingest.rs
-│   │   │   └── sync.rs
 │   │   └── tray.rs
 │   ├── Cargo.toml
 │   └── tauri.conf.json
@@ -106,70 +162,8 @@ cargo run --manifest-path src-tauri/Cargo.toml -- clear-credentials
 └── README.md
 ```
 
-## 현재 UI 상태
+## 참고
 
-- `src/App.tsx`: 팝업 윈도우의 기본 흰 배경 레이아웃
-- `Main` 텍스트가 들어간 단일 컨테이너만 생성해 둔 상태
-- 실제 리뷰 목록 UI는 이후 여기에 추가하면 된다
-
-## GitHub Releases 자동업데이트
-
-현재 updater endpoint 기본값은 아래 GitHub Releases JSON을 바라본다.
-
-- `https://github.com/sycha-front/pr-review-please/releases/latest/download/latest.json`
-
-앱은 build 시점의 환경변수로 updater 공개키를 읽는다.
-
-- `TAURI_UPDATER_PUBKEY`
-- 선택: `PR_PLEASE_UPDATER_ENDPOINT`
-
-중요:
-
-- updater 서명 키는 `.env`가 아니라 빌드 환경변수로 넣어야 한다.
-- updater private key는 절대 저장소에 커밋하면 안 된다.
-- `src-tauri/tauri.conf.json`에는 `createUpdaterArtifacts: true`가 켜져 있어서 릴리스 시 `latest.json`, `.sig`, macOS updater bundle 생성이 가능하다.
-
-### 1. updater 키 1회 생성
-
-Node가 설치된 환경에서 Tauri CLI로 1회 생성한다.
-
-```bash
-yarn tauri signer generate -w ~/.tauri/review-please.key
-```
-
-여기서 나온 값 중:
-
-- private key: `TAURI_SIGNING_PRIVATE_KEY` 로 GitHub Actions secret에 저장
-- public key: `TAURI_UPDATER_PUBKEY` 로 GitHub Actions secret에 저장
-
-### 2. GitHub Actions secret 준비
-
-릴리스 워크플로우 `.github/workflows/release.yml` 에 맞춰 아래 secret이 필요하다.
-
-- `TAURI_SIGNING_PRIVATE_KEY`
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- `TAURI_UPDATER_PUBKEY`
-- `APPLE_ID`
-- `APPLE_PASSWORD`
-- `APPLE_TEAM_ID`
-- `APPLE_SIGNING_IDENTITY`
-- `APPLE_CERTIFICATE`
-- `APPLE_CERTIFICATE_PASSWORD`
-- `KEYCHAIN_PASSWORD`
-
-### 3. 배포 방법
-
-버전을 올리고 태그를 푸시하면 GitHub Actions가 macOS 릴리스를 만든다.
-
-```bash
-git tag v0.1.1
-git push origin v0.1.1
-```
-
-워크플로우가 성공하면:
-
-- GitHub Release가 생성됨
-- macOS updater bundle과 signature가 업로드됨
-- `latest.json`이 릴리스 asset으로 올라감
-
-배포 대상 사용자는 설치 후 앱을 실행하면 자동으로 업데이트를 확인하고, 트레이 메뉴에서도 수동 확인할 수 있다.
+- 자동업데이트는 현재 사용하지 않는다.
+- 소수 개발자 배포를 전제로, 설치형 앱 + 수동 업데이트 스크립트 방식으로 운영한다.
+- macOS 보안 경고가 뜨면 첫 실행 시 Finder에서 앱 우클릭 후 `열기`로 허용하면 된다.

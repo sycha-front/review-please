@@ -15,7 +15,6 @@ const MENU_UPDATE_ID: &str = "update";
 const MENU_LAST_SYNC_ID: &str = "last_sync";
 const MENU_STATUS_ID: &str = "status";
 const MENU_SYNC_NOW_ID: &str = "sync_now";
-const MENU_CHECK_UPDATES_ID: &str = "check_updates";
 const MENU_SETTINGS_ID: &str = "settings";
 const MENU_SHOW_LAST_ERROR_ID: &str = "show_last_error";
 const MENU_OPEN_DATA_DIR_ID: &str = "open_data_dir";
@@ -41,8 +40,6 @@ impl TrayController {
             MenuItem::with_id(app, MENU_LAST_SYNC_ID, "Last Sync: never", false, None::<&str>)?;
         let status_item = MenuItem::with_id(app, MENU_STATUS_ID, "Status: OK", false, None::<&str>)?;
         let sync_now_item = MenuItem::with_id(app, MENU_SYNC_NOW_ID, "Sync Now", true, None::<&str>)?;
-        let check_updates_item =
-            MenuItem::with_id(app, MENU_CHECK_UPDATES_ID, "Check for Updates", true, None::<&str>)?;
         let settings_item = MenuItem::with_id(app, MENU_SETTINGS_ID, "Settings", true, None::<&str>)?;
         let show_last_error_item = MenuItem::with_id(
             app,
@@ -65,7 +62,6 @@ impl TrayController {
                 &status_item,
                 &separator,
                 &sync_now_item,
-                &check_updates_item,
                 &settings_item,
                 &show_last_error_item,
                 &open_data_dir_item,
@@ -187,7 +183,6 @@ pub struct AppState {
     pub coordinator: Arc<dyn SyncCoordinator>,
     pub tray: Arc<TrayController>,
     pub store: Arc<dyn ReviewStore>,
-    pub updater: Arc<crate::services::updater::UpdateController>,
     pub runtime_config: Arc<RwLock<AppConfig>>,
 }
 
@@ -197,9 +192,6 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Resul
     match id {
         MENU_SYNC_NOW_ID => {
             state.coordinator.sync_now()?;
-        }
-        MENU_CHECK_UPDATES_ID => {
-            state.updater.check_for_updates(app.clone(), true);
         }
         MENU_SETTINGS_ID => {
             show_main_window_near_cursor(app)?;

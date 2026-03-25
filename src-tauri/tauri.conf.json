@@ -26,7 +26,6 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -35,13 +34,5 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlENUFERDMxOTUwNzE3NDUKUldSRkZ3ZVZNZDFhbmJpZDRiRUdCQ1NrQnRyWCt5elNqMHhyVGM3SEt4ZlNvc3Izd1NWSU9ra2MK",
-      "endpoints": [
-        "https://github.com/sycha-front/pr-review-please/releases/latest/download/latest.json"
-      ]
-    }
   }
 }

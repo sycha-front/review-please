@@ -76,7 +76,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         with:
           tagName: v__VERSION__
-          releaseName: pr-please v__VERSION__
+          releaseName: review-please v__VERSION__
           releaseBody: See assets and latest.json for the signed updater bundle.
           releaseDraft: true
           prerelease: false

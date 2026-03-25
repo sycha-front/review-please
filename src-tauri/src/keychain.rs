@@ -2,9 +2,12 @@ use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
 
+use crate::config::read_dotenv_map;
+
 pub const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 pub const SLACK_TOKEN_ACCOUNT: &str = "slack_user_token";
-const SERVICE_NAME: &str = "com.pr-please.app";
+const SERVICE_NAME: &str = "com.review-please.app";
+const LEGACY_SERVICE_NAME: &str = "com.pr-please.app";
 
 pub trait CredentialStore: Send + Sync {
     fn get(&self, account: &str) -> Result<Option<String>>;
@@ -27,22 +30,47 @@ impl SecurityCredentialStore {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         Err(anyhow!(stderr))
     }
-}
 
-impl CredentialStore for SecurityCredentialStore {
-    fn get(&self, account: &str) -> Result<Option<String>> {
+    fn find_value(service_name: &str, account: &str) -> Result<Option<String>> {
         match Self::run_security(&[
             "find-generic-password",
             "-a",
             account,
             "-s",
-            SERVICE_NAME,
+            service_name,
             "-w",
         ]) {
             Ok(value) => Ok(Some(value)),
             Err(error) if error.to_string().contains("could not be found") => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    fn fallback_env(account: &str) -> Result<Option<String>> {
+        let dotenv = read_dotenv_map()?;
+        let key = match account {
+            GITHUB_TOKEN_ACCOUNT => "GITHUB_TOKEN",
+            SLACK_TOKEN_ACCOUNT => "SLACK_TOKEN",
+            _ => return Ok(None),
+        };
+        Ok(dotenv
+            .get(key)
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string))
+    }
+}
+
+impl CredentialStore for SecurityCredentialStore {
+    fn get(&self, account: &str) -> Result<Option<String>> {
+        if let Some(value) = Self::find_value(SERVICE_NAME, account)? {
+            return Ok(Some(value));
+        }
+        if let Some(value) = Self::find_value(LEGACY_SERVICE_NAME, account)? {
+            return Ok(Some(value));
+        }
+        Self::fallback_env(account)
     }
 
     fn set(&self, account: &str, secret: &str) -> Result<()> {

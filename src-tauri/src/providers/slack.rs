@@ -127,7 +127,7 @@ impl LocalSlackProvider {
     fn token(&self) -> Result<String> {
         self.credentials
             .get(SLACK_TOKEN_ACCOUNT)?
-            .ok_or_else(|| anyhow!("missing Slack user token; run `pr-please setup`"))
+            .ok_or_else(|| anyhow!("missing Slack user token; run `review-please setup`"))
     }
 
     fn get<T: for<'de> Deserialize<'de>>(

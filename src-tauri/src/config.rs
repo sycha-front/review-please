@@ -7,7 +7,8 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-const APP_SUPPORT_DIR: &str = "Library/Application Support/pr-please";
+const APP_SUPPORT_DIR: &str = "Library/Application Support/review-please";
+const LEGACY_APP_SUPPORT_DIR: &str = "Library/Application Support/pr-please";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -81,6 +82,7 @@ impl AppConfig {
 }
 
 pub fn ensure_data_dir() -> Result<PathBuf> {
+    migrate_legacy_data_dir()?;
     let data_dir = data_dir()?;
     fs::create_dir_all(&data_dir)
         .with_context(|| format!("failed to create {}", data_dir.display()))?;
@@ -88,10 +90,14 @@ pub fn ensure_data_dir() -> Result<PathBuf> {
 }
 
 pub fn read_dotenv_map() -> Result<HashMap<String, String>> {
-    let dotenv_path = std::env::current_dir()
-        .ok()
-        .map(|dir| dir.join(".env"))
-        .filter(|path| path.exists());
+    let dotenv_path = std::env::current_dir().ok().and_then(|dir| {
+        [
+            dir.join(".env"),
+            dir.parent().map(|parent| parent.join(".env")).unwrap_or_default(),
+        ]
+        .into_iter()
+        .find(|path| path.exists())
+    });
     let Some(path) = dotenv_path else {
         return Ok(HashMap::new());
     };
@@ -135,6 +141,11 @@ pub fn data_dir() -> Result<PathBuf> {
     Ok(home.join(APP_SUPPORT_DIR))
 }
 
+fn legacy_data_dir() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("HOME directory is not available"))?;
+    Ok(home.join(LEGACY_APP_SUPPORT_DIR))
+}
+
 pub fn config_path() -> Result<PathBuf> {
     Ok(data_dir()?.join("config.toml"))
 }
@@ -148,5 +159,27 @@ pub fn ensure_parent(path: &Path) -> Result<()> {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
+    Ok(())
+}
+
+fn migrate_legacy_data_dir() -> Result<()> {
+    let current = data_dir()?;
+    if current.exists() {
+        return Ok(());
+    }
+
+    let legacy = legacy_data_dir()?;
+    if !legacy.exists() {
+        return Ok(());
+    }
+
+    ensure_parent(&current)?;
+    fs::rename(&legacy, &current).with_context(|| {
+        format!(
+            "failed to migrate legacy app support directory from {} to {}",
+            legacy.display(),
+            current.display()
+        )
+    })?;
     Ok(())
 }

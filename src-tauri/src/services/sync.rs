@@ -126,7 +126,7 @@ impl LocalSyncCoordinator {
             Ok(outcome) => {
                 if outcome.new_pending_count > 0 && config.notify_on_new_pending {
                     let _ = self.notifications.notify(
-                        "pr-please",
+                        "review-please",
                         &format!("{} new review requests", outcome.new_pending_count),
                     );
                 }
@@ -135,7 +135,7 @@ impl LocalSyncCoordinator {
             Err(error) => {
                 let failures = self.record_failure(SLACK_SYNC_SOURCE, &error.to_string())?;
                 if failures == 3 && config.notify_on_errors {
-                    let _ = self.notifications.notify("pr-please", "Slack sync failed");
+                    let _ = self.notifications.notify("review-please", "Slack sync failed");
                 }
                 Err(error)
             }
@@ -149,7 +149,7 @@ impl LocalSyncCoordinator {
                 if config.notify_on_done {
                     for pr_key in &outcome.completed_pr_keys {
                         let _ = self.notifications.notify(
-                            "pr-please",
+                            "review-please",
                             &format!("Review completed for {pr_key}"),
                         );
                     }
@@ -159,7 +159,7 @@ impl LocalSyncCoordinator {
             Err(error) => {
                 let failures = self.record_failure(GITHUB_SYNC_SOURCE, &error.to_string())?;
                 if failures == 3 && config.notify_on_errors {
-                    let _ = self.notifications.notify("pr-please", "GitHub sync failed");
+                    let _ = self.notifications.notify("review-please", "GitHub sync failed");
                 }
                 Err(error)
             }

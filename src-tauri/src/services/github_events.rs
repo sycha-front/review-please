@@ -6,7 +6,7 @@ use crate::{
     config::AppConfig,
     db::ReviewStore,
     models::{GithubPullRef, SyncState, utc_now_string},
-    providers::GithubProvider,
+    providers::{github::is_access_denied_error, GithubProvider},
     services::review_state::should_mark_done,
 };
 
@@ -29,13 +29,22 @@ pub fn run(
         let Some(pull) = GithubPullRef::from_key(pr_key) else {
             continue;
         };
-        if let Ok(metadata) = github_provider.fetch_pr_metadata(&pull) {
-            let _ = store.refresh_review_request_pr_metadata(
-                pr_key,
-                &metadata.title,
-                metadata.author_login.as_deref(),
-                metadata.merged_at.as_deref(),
-            );
+        match github_provider.fetch_pr_metadata(&pull) {
+            Ok(metadata) => {
+                let _ = store.refresh_review_request_pr_metadata(
+                    pr_key,
+                    &metadata.title,
+                    metadata.author_login.as_deref(),
+                    metadata.merged_at.as_deref(),
+                );
+            }
+            Err(error) if is_access_denied_error(&error) => {
+                eprintln!("Skipping inaccessible tracked PR {}: {error}", pr_key);
+                continue;
+            }
+            Err(error) => {
+                eprintln!("GitHub metadata refresh failed for {}: {error}", pr_key);
+            }
         }
     }
     let poll_result =
@@ -61,7 +70,15 @@ pub fn run(
         };
         // Always rescan tracked PRs directly so we can backfill missed approvals even when
         // the notifications endpoint returns 304 or another actor's later event already exists.
-        let events = github_provider.fetch_events_for_pull(&pull, None, &current_user_login)?;
+        let events = match github_provider.fetch_events_for_pull(&pull, None, &current_user_login)
+        {
+            Ok(events) => events,
+            Err(error) if is_access_denied_error(&error) => {
+                eprintln!("Skipping inaccessible PR events for {}: {error}", pr_key);
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         for event in events {
             let _ = store.upsert_github_event(&event)?;
             if should_mark_done(&event.event_kind, event.actor_is_me) {
@@ -91,20 +108,39 @@ pub fn run(
             Some(pull) if thread.subject_type == "PullRequest" && tracked.contains(&pull.key()) => pull,
             _ => continue,
         };
-        if let Ok(metadata) = github_provider.fetch_pr_metadata(pull) {
-            let _ = store.refresh_review_request_pr_metadata(
-                &pull.key(),
-                &metadata.title,
-                metadata.author_login.as_deref(),
-                metadata.merged_at.as_deref(),
-            );
+        match github_provider.fetch_pr_metadata(pull) {
+            Ok(metadata) => {
+                let _ = store.refresh_review_request_pr_metadata(
+                    &pull.key(),
+                    &metadata.title,
+                    metadata.author_login.as_deref(),
+                    metadata.merged_at.as_deref(),
+                );
+            }
+            Err(error) if is_access_denied_error(&error) => {
+                eprintln!("Skipping inaccessible notification PR {}: {error}", pull.key());
+                continue;
+            }
+            Err(error) => {
+                eprintln!("GitHub metadata refresh failed for {}: {error}", pull.key());
+            }
         }
         let since = store.latest_event_at_for_pr(&pull.key())?;
-        let events = github_provider.fetch_events_for_thread(
+        let events = match github_provider.fetch_events_for_thread(
             &thread,
             since.as_deref(),
             &current_user_login,
-        )?;
+        ) {
+            Ok(events) => events,
+            Err(error) if is_access_denied_error(&error) => {
+                eprintln!(
+                    "Skipping inaccessible notification events for {}: {error}",
+                    pull.key()
+                );
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         for event in events {
             let _ = store.upsert_github_event(&event)?;
             if should_mark_done(&event.event_kind, event.actor_is_me) {

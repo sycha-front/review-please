@@ -1,4 +1,5 @@
 import { Github, Slack } from "../../../assets/icons";
+import Tooltip from "../../../common/tooltip";
 import { P3 } from "../../../common/typo";
 import { IntegrationsSummary } from "../../../hooks/useReviewDump";
 import cn from "../../../utils/cn";
@@ -19,18 +20,22 @@ export default function StatusBadge({
         : "대기 중";
 
   return (
-    <section
-      className={cn(
-        s.card,
-        integration.status === "connected"
-          ? s.connected
-          : integration.status === "error"
-            ? s.error
-            : s.waiting,
-      )}
+    <Tooltip
+      message={integration.status === "error" ? integration.last_error : null}
     >
-      {label === "GitHub" ? <Github /> : <Slack />}
-      <P3>{integration.last_success_label?.split(" ")[1]}</P3>
-    </section>
+      <section
+        className={cn(
+          s.card,
+          integration.status === "connected"
+            ? s.connected
+            : integration.status === "error"
+              ? s.error
+              : s.waiting,
+        )}
+      >
+        {label === "GitHub" ? <Github /> : <Slack />}
+        <P3>{integration.last_success_label?.split(" ")[1]}</P3>
+      </section>
+    </Tooltip>
   );
 }

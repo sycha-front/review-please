@@ -31,7 +31,7 @@ impl UpdateController {
         {
             if interactive {
                 let _ = show_info_dialog(
-                    "pr-please",
+                    "review-please",
                     "이미 업데이트를 확인하고 있어요. 잠시 후 다시 시도해주세요.",
                 );
             }
@@ -69,7 +69,7 @@ async fn run_update_check<R: Runtime>(app: AppHandle<R>, interactive: bool) -> R
 
     let Some(update) = update else {
         if interactive {
-            show_info_dialog("pr-please", "현재 최신 버전을 사용 중이에요.")?;
+            show_info_dialog("review-please", "현재 최신 버전을 사용 중이에요.")?;
         }
         return Ok(());
     };
@@ -97,7 +97,7 @@ async fn run_update_check<R: Runtime>(app: AppHandle<R>, interactive: bool) -> R
         )
         .await?;
 
-    let _ = app.emit("pr-please://update-installed", ());
+    let _ = app.emit("review-please://update-installed", ());
     show_info_dialog(
         "Update installed",
         "업데이트 설치가 끝났어요. 앱을 다시 시작합니다.",

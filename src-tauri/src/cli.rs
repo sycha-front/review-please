@@ -62,7 +62,7 @@ impl CliCommand {
             "reset-state" => Ok(Some(Self::ResetState)),
             "clear-credentials" => Ok(Some(Self::ClearCredentials)),
             "help" | "--help" | "-h" => Ok(Some(Self::Help)),
-            _ => Err(anyhow!("unknown command `{command}`; run `pr-please help`")),
+            _ => Err(anyhow!("unknown command `{command}`; run `review-please help`")),
         }
     }
 }
@@ -118,13 +118,13 @@ fn parse_setup(args: &[String]) -> Result<SetupArgs> {
 
 fn print_help() {
     println!(
-        "pr-please commands:
-  pr-please setup --keyword <value> --slack-token <token> --github-token <token> [--slack-poll-seconds <n>] [--github-poll-seconds <n>] [--done-menu-limit <n>]
-  pr-please doctor
-  pr-please dump --format json
-  pr-please sync-once
-  pr-please reset-state
-  pr-please clear-credentials"
+        "review-please commands:
+  review-please setup --keyword <value> --slack-token <token> --github-token <token> [--slack-poll-seconds <n>] [--github-poll-seconds <n>] [--done-menu-limit <n>]
+  review-please doctor
+  review-please dump --format json
+  review-please sync-once
+  review-please reset-state
+  review-please clear-credentials"
     );
 }
 

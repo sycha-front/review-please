@@ -10,7 +10,10 @@ use crate::{
     providers::{GithubProvider, SlackProvider},
 };
 
-use crate::providers::slack::{extract_deadline, extract_pull_requests, slack_ts_to_local_date};
+use crate::providers::{
+    github::is_access_denied_error,
+    slack::{extract_deadline, extract_pull_requests, slack_ts_to_local_date},
+};
 
 pub const SLACK_SYNC_SOURCE: &str = "slack_search";
 
@@ -79,10 +82,20 @@ pub fn run(
         };
 
         for pull in pulls {
+            let metadata = match github_provider.fetch_pr_metadata(&pull) {
+                Ok(metadata) => Some(metadata),
+                Err(error) if is_access_denied_error(&error) => {
+                    eprintln!("Skipping inaccessible PR {}: {error}", pull.key());
+                    continue;
+                }
+                Err(error) => {
+                    eprintln!("GitHub metadata lookup failed for {}: {error}", pull.key());
+                    None
+                }
+            };
             if !store.review_request_exists(&message.ts, &pull.key())? {
                 outcome.new_pending_count += 1;
             }
-            let metadata = github_provider.fetch_pr_metadata(&pull).ok();
             let pr_title = metadata
                 .as_ref()
                 .map(|value| value.title.clone())

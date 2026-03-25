@@ -75,7 +75,7 @@ impl TrayController {
 
         let mut builder = TrayIconBuilder::with_id("main")
             .menu(&menu)
-            .tooltip("pr-please")
+            .tooltip("review-please")
             .show_menu_on_left_click(false)
             .icon_as_template(true)
             .on_menu_event(move |app, event| {
@@ -207,7 +207,7 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Resul
         MENU_SHOW_LAST_ERROR_ID => {
             if let Some(last_error) = state.coordinator.last_error() {
                 let script = format!(
-                    "display dialog \"{}\" with title \"pr-please\" buttons {{\"OK\"}} default button \"OK\"",
+                    "display dialog \"{}\" with title \"review-please\" buttons {{\"OK\"}} default button \"OK\"",
                     last_error.replace('"', "\\\"")
                 );
                 let _ = Command::new("osascript").args(["-e", &script]).output();

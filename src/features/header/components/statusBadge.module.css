@@ -5,12 +5,8 @@
   background-color: var(--white);
   border: 1px solid #e5e7eb;
   border-radius: 999px;
-  padding: 4px;
-}
-
-.connected {
-  background-color: #dcfce7;
-  color: #166534;
+  padding: 4px 8px 4px 4px;
+  cursor: default;
 }
 
 .error {
@@ -19,6 +15,19 @@
 }
 
 .waiting {
-  background-color: #f3f4f6;
-  color: #4b5563;
+  background: linear-gradient(0, var(--white) 0%, var(--gray-300) 100%);
+  background-size: 200%;
+  animation: loading 2s ease-in-out infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "pr-please",
+  "productName": "review-please",
   "version": "0.1.0",
-  "identifier": "com.pr-please.app",
+  "identifier": "com.review-please.app",
   "build": {
     "beforeDevCommand": "yarn dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "pr-please",
+        "title": "review-please",
         "width": 360,
         "height": 420,
         "visible": false,
@@ -35,5 +35,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlENUFERDMxOTUwNzE3NDUKUldSRkZ3ZVZNZDFhbmJpZDRiRUdCQ1NrQnRyWCt5elNqMHhyVGM3SEt4ZlNvc3Izd1NWSU9ra2MK",
+      "endpoints": [
+        "https://github.com/sycha-front/pr-review-please/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
@@ -22,6 +22,13 @@ pub fn is_related_reason(reason: &str) -> bool {
     matches!(reason, "review_requested" | "mention" | "team_mention" | "author")
 }
 
+pub fn is_access_denied_error(error: &Error) -> bool {
+    error
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("github access denied")
+}
+
 pub struct LocalGithubProvider {
     credentials: Arc<dyn CredentialStore>,
 }
@@ -34,7 +41,7 @@ impl LocalGithubProvider {
     fn token(&self) -> Result<String> {
         self.credentials
             .get(GITHUB_TOKEN_ACCOUNT)?
-            .ok_or_else(|| anyhow!("missing GitHub token; run `pr-please setup`"))
+            .ok_or_else(|| anyhow!("missing GitHub token; run `review-please setup`"))
     }
 
     fn base_headers(token: &str) -> [String; 2] {
@@ -45,28 +52,31 @@ impl LocalGithubProvider {
     }
 
     fn request_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T> {
-        let token = self.token()?;
-        let mut command = Command::new("curl");
-        command
-            .arg("-sS")
-            .arg("-L")
-            .arg(url)
-            .arg("-H")
-            .arg("User-Agent: pr-please/0.1.0");
-        for header in Self::base_headers(&token) {
-            command.arg("-H").arg(header);
-        }
-        let output = command
-            .output()
-            .with_context(|| format!("failed to call GitHub API {url}"))?;
-        if !output.status.success() {
+        let (status, _headers, body) = self.curl_with_headers(url, &[])?;
+        if matches!(status, 403 | 404) {
             return Err(anyhow!(
-                "curl failed for GitHub API {}: {}",
+                "GitHub access denied for {} (HTTP {})",
                 url,
-                String::from_utf8_lossy(&output.stderr).trim()
+                status
             ));
         }
-        serde_json::from_slice(&output.stdout).context("failed to decode GitHub response")
+        if status >= 400 {
+            let preview = body.chars().take(240).collect::<String>();
+            return Err(anyhow!(
+                "GitHub API {} returned HTTP {}: {}",
+                url,
+                status,
+                preview
+            ));
+        }
+        serde_json::from_str(&body).with_context(|| {
+            let preview = body.chars().take(240).collect::<String>();
+            format!(
+                "failed to decode GitHub response from {}: {}",
+                url,
+                preview
+            )
+        })
     }
 
     fn curl_with_headers(
@@ -76,7 +86,7 @@ impl LocalGithubProvider {
     ) -> Result<(u16, HashMap<String, String>, String)> {
         let token = self.token()?;
         let header_path = std::env::temp_dir().join(format!(
-            "pr-please-headers-{}-{}.txt",
+            "review-please-headers-{}-{}.txt",
             std::process::id(),
             utc_now_string().replace([':', '.'], "-")
         ));
@@ -92,7 +102,7 @@ impl LocalGithubProvider {
             .arg("\n__CURL_STATUS__:%{http_code}")
             .arg(url)
             .arg("-H")
-            .arg("User-Agent: pr-please/0.1.0");
+            .arg("User-Agent: review-please/0.1.0");
         for header in Self::base_headers(&token) {
             command.arg("-H").arg(header);
         }

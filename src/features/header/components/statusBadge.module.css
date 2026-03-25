@@ -1,0 +1,24 @@
+.card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--white);
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.connected {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.waiting {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}

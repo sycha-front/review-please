@@ -2,6 +2,11 @@
   margin-bottom: 16px;
 }
 
+.statusRow {
+  display: flex;
+  gap: 8px;
+}
+
 .desc {
   color: #6b7280;
   font-size: 12px;

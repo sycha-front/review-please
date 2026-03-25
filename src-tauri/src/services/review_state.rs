@@ -113,6 +113,7 @@ mod tests {
             event_at: "2026-03-23T00:00:00Z".to_string(),
             payload_json: "{}".to_string(),
             created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
         }];
 
         assert_eq!(

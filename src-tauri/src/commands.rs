@@ -58,6 +58,12 @@ pub struct UpdateReviewStatusPayload {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkUpdateEventsReadPayload {
+    pub event_ids: Vec<String>,
+}
+
 #[tauri::command]
 pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String> {
     let status = state.coordinator.status_label();
@@ -122,6 +128,17 @@ pub fn update_review_status(
         .refresh_tray()
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn mark_update_events_read(
+    payload: MarkUpdateEventsReadPayload,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .store
+        .mark_github_events_read(&payload.event_ids)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

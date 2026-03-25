@@ -52,14 +52,39 @@ pub fn run(
         .poll_interval_seconds
         .or(sync_state.github_poll_interval_seconds);
 
+    let current_user_login = github_provider.current_user_login()?;
+    let mut outcome = GithubSyncOutcome::default();
+
+    for pr_key in &tracked {
+        let Some(pull) = GithubPullRef::from_key(pr_key) else {
+            continue;
+        };
+        // Always rescan tracked PRs directly so we can backfill missed approvals even when
+        // the notifications endpoint returns 304 or another actor's later event already exists.
+        let events = github_provider.fetch_events_for_pull(&pull, None, &current_user_login)?;
+        for event in events {
+            let _ = store.upsert_github_event(&event)?;
+            if should_mark_done(&event.event_kind, event.actor_is_me) {
+                let completed = store.mark_requests_done_by_pr_key(
+                    &event.pr_key,
+                    &event.id,
+                    &event.event_at,
+                )?;
+                if completed > 0 {
+                    outcome.completed_request_count += completed;
+                    if !outcome.completed_pr_keys.contains(&event.pr_key) {
+                        outcome.completed_pr_keys.push(event.pr_key.clone());
+                    }
+                }
+            }
+        }
+    }
+
     if poll_result.not_modified {
         next_state.last_success_at = next_state.last_polled_at.clone();
         store.save_sync_state(&next_state)?;
-        return Ok(GithubSyncOutcome::default());
+        return Ok(outcome);
     }
-
-    let current_user_login = github_provider.current_user_login()?;
-    let mut outcome = GithubSyncOutcome::default();
 
     for thread in poll_result.threads {
         let pull = match thread.pull.as_ref() {
@@ -81,10 +106,7 @@ pub fn run(
             &current_user_login,
         )?;
         for event in events {
-            if store.github_event_exists(&event.id)? {
-                continue;
-            }
-            store.insert_github_event(&event)?;
+            let _ = store.upsert_github_event(&event)?;
             if should_mark_done(&event.event_kind, event.actor_is_me) {
                 let completed = store.mark_requests_done_by_pr_key(
                     &event.pr_key,

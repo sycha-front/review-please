@@ -180,6 +180,7 @@ impl LocalGithubProvider {
                     event_at,
                     payload_json: json!(review).to_string(),
                     created_at: utc_now_string(),
+                    read_at: None,
                 })
             })
             .collect())
@@ -221,6 +222,7 @@ impl LocalGithubProvider {
                     event_at,
                     payload_json: json!(comment).to_string(),
                     created_at: utc_now_string(),
+                    read_at: None,
                 })
             })
             .collect())
@@ -262,6 +264,7 @@ impl LocalGithubProvider {
                     event_at,
                     payload_json: json!(comment).to_string(),
                     created_at: utc_now_string(),
+                    read_at: None,
                 })
             })
             .collect())
@@ -346,6 +349,40 @@ impl super::GithubProvider for LocalGithubProvider {
         })
     }
 
+    fn fetch_events_for_pull(
+        &self,
+        pull: &GithubPullRef,
+        since: Option<&str>,
+        current_user_login: &str,
+    ) -> Result<Vec<GithubEvent>> {
+        let thread_id = format!("scan:{}", pull.key());
+        let reason = "direct_scan";
+        let mut events = Vec::new();
+        events.extend(self.collect_review_events(
+            pull,
+            reason,
+            &thread_id,
+            since,
+            current_user_login,
+        )?);
+        events.extend(self.collect_issue_comment_events(
+            pull,
+            reason,
+            &thread_id,
+            since,
+            current_user_login,
+        )?);
+        events.extend(self.collect_review_comment_events(
+            pull,
+            reason,
+            &thread_id,
+            since,
+            current_user_login,
+        )?);
+        events.sort_by(|left, right| left.event_at.cmp(&right.event_at));
+        Ok(events)
+    }
+
     fn fetch_events_for_thread(
         &self,
         thread: &GithubNotificationThread,
@@ -392,6 +429,7 @@ impl super::GithubProvider for LocalGithubProvider {
                 event_at: thread.updated_at.clone().unwrap_or_else(utc_now_string),
                 payload_json: json!(thread).to_string(),
                 created_at: utc_now_string(),
+                read_at: None,
             });
         }
         Ok(events)
@@ -430,6 +468,8 @@ struct NotificationSubject {
 struct PullReview {
     id: i64,
     state: Option<String>,
+    body: Option<String>,
+    html_url: Option<String>,
     submitted_at: Option<String>,
     user: Option<GithubActor>,
 }
@@ -437,6 +477,8 @@ struct PullReview {
 #[derive(Debug, Deserialize, serde::Serialize)]
 struct IssueComment {
     id: i64,
+    body: Option<String>,
+    html_url: Option<String>,
     created_at: Option<String>,
     user: Option<GithubActor>,
 }
@@ -444,6 +486,8 @@ struct IssueComment {
 #[derive(Debug, Deserialize, serde::Serialize)]
 struct ReviewComment {
     id: i64,
+    body: Option<String>,
+    html_url: Option<String>,
     created_at: Option<String>,
     user: Option<GithubActor>,
 }

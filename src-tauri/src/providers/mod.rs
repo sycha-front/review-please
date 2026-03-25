@@ -17,6 +17,12 @@ pub trait SlackProvider: Send + Sync {
 pub trait GithubProvider: Send + Sync {
     fn current_user_login(&self) -> Result<String>;
     fn fetch_pr_metadata(&self, pull: &GithubPullRef) -> Result<PullRequestMetadata>;
+    fn fetch_events_for_pull(
+        &self,
+        pull: &GithubPullRef,
+        since: Option<&str>,
+        current_user_login: &str,
+    ) -> Result<Vec<GithubEvent>>;
     fn fetch_notifications(
         &self,
         sync_state: &SyncState,

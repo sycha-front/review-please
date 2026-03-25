@@ -12,6 +12,7 @@ use crate::{
     services::{
         notification::MacNotificationService,
         sync::{LocalSyncCoordinator, SyncCoordinator},
+        updater::UpdateController,
     },
     tray::{AppState, TrayController},
 };
@@ -19,10 +20,12 @@ use crate::{
 pub fn run_tray_app() -> Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::get_review_dump,
             commands::update_review_deadline,
             commands::update_review_status,
+            commands::mark_update_events_read,
             commands::get_settings,
             commands::save_settings
         ])
@@ -42,6 +45,7 @@ pub fn run_tray_app() -> Result<()> {
             let store = build_store()?;
             let credentials = build_credentials();
             let tray = TrayController::create(app, config::data_dir()?)?;
+            let updater = Arc::new(UpdateController::new());
             let coordinator: Arc<dyn SyncCoordinator> = Arc::new(LocalSyncCoordinator::new(
                 runtime_config.clone(),
                 store.clone(),
@@ -54,10 +58,12 @@ pub fn run_tray_app() -> Result<()> {
                 coordinator: coordinator.clone(),
                 tray,
                 store,
+                updater: updater.clone(),
                 runtime_config,
             });
             coordinator.refresh_tray()?;
             coordinator.start()?;
+            updater.check_for_updates(app.handle().clone(), false);
             Ok(())
         })
         .build(tauri::generate_context!())?

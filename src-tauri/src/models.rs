@@ -168,6 +168,7 @@ pub struct GithubEvent {
     pub event_at: String,
     pub payload_json: String,
     pub created_at: String,
+    pub read_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,12 +211,50 @@ pub struct TrayState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationStatus {
+    pub status: String,
+    pub last_success_at: Option<String>,
+    pub last_success_label: Option<String>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationsSummary {
+    pub slack: IntegrationStatus,
+    pub github: IntegrationStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReviewDump {
     pub pending: Vec<ReviewRequest>,
     pub done: Vec<ReviewRequest>,
     pub update: Vec<ReviewRequest>,
+    pub update_feed: Vec<UpdateFeedItem>,
     pub recent_events: Vec<GithubEvent>,
     pub tray_state: TrayState,
+    pub integrations: IntegrationsSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateFeedItem {
+    pub id: String,
+    pub source_event_ids: Vec<String>,
+    pub pr_key: String,
+    pub target_label: String,
+    pub target_url: String,
+    pub headline: String,
+    pub summary: Option<String>,
+    pub time_label: String,
+    pub occurred_at: String,
+    pub actor_login: Option<String>,
+    pub actor_context: String,
+    pub repo_label: String,
+    pub activity_label: String,
+    pub event_kind: String,
+    pub event_count: u64,
+    pub unread_count: u64,
+    pub is_read: bool,
+    pub read_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

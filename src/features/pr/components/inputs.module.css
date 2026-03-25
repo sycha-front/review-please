@@ -1,0 +1,53 @@
+/* status checkbox */
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gray-600);
+  cursor: pointer;
+
+  & input {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    accent-color: var(--black);
+  }
+}
+
+.readButton {
+  width: auto;
+  min-width: 88px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background-color: var(--black);
+  color: var(--white);
+  font-size: 12px;
+}
+
+.readButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* date input */
+.deadline {
+  display: block;
+  width: 120px;
+  height: 22px;
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  transition: 0.1s var(--cubic);
+  transform: translateX(-4px);
+  background-color: transparent;
+  color: var(--gray-300);
+  cursor: pointer;
+  padding: 0;
+}
+
+.deadline:hover {
+  background-color: var(--gray-50);
+}
+
+.able {
+  color: var(--black);
+}

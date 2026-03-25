@@ -31,13 +31,14 @@ export default function PrList({
 
 export function PrItem({ item }: Props) {
   const { updateStatus } = useReviewActions();
-  const prLink = getGithubProps(item.pr_url);
-  const repoLink = getGithubProps(item.repo_name);
+  const repoLink = getGithubProps(`${item.repo_owner}/${item.repo_name}`);
 
   return (
     <li className={s.item}>
       <H4 className={s.title}>
-        <a {...prLink}>{item.pr_title}</a>
+        <a href={item.pr_url} target="_blank" rel="noreferrer">
+          {item.pr_title}
+        </a>
       </H4>
       <P3 className={s.desc}>
         {item.slack_text.replace(bracketRegex, "").split("\n")[0]}

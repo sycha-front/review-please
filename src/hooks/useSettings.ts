@@ -28,7 +28,7 @@ export function useSettings(): UseSettingsResult {
         if (!isMounted) {
           return;
         }
-        console.log("[pr-please] settings", next);
+        console.log("[review-please] settings", next);
         startTransition(() => {
           setSettings(next);
           setError(null);
@@ -39,7 +39,7 @@ export function useSettings(): UseSettingsResult {
         }
         const message =
           loadError instanceof Error ? loadError.message : String(loadError);
-        console.error("[pr-please] failed to load settings", message);
+        console.error("[review-please] failed to load settings", message);
         startTransition(() => {
           setError(message);
         });
@@ -63,7 +63,7 @@ export function useSettings(): UseSettingsResult {
       const saved = await invoke<SettingsPayload>("save_settings", {
         payload: next,
       });
-      console.log("[pr-please] saved settings", saved);
+      console.log("[review-please] saved settings", saved);
       startTransition(() => {
         setSettings(saved);
         setError(null);
@@ -72,7 +72,7 @@ export function useSettings(): UseSettingsResult {
     } catch (saveError) {
       const message =
         saveError instanceof Error ? saveError.message : String(saveError);
-      console.error("[pr-please] failed to save settings", message);
+      console.error("[review-please] failed to save settings", message);
       startTransition(() => {
         setError(message);
       });

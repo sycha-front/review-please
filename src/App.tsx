@@ -1,7 +1,7 @@
 import "./App.css";
+import { ReviewActionsProvider } from "./context/ReviewActionsContext";
+import Header from "./features/header/header";
 import Main from "./features/main";
-import { ReviewActionsProvider } from "./features/main/ReviewActionsContext";
-import Header from "./features/main/components/header";
 import { SettingsView } from "./features/settings/SettingsView";
 import { pageStyle } from "./features/settings/styles";
 import { useReviewDump } from "./hooks/useReviewDump";
@@ -17,13 +17,17 @@ function App() {
 
   return (
     <main style={pageStyle}>
-      <Header />
+      <Header integrations={snapshot?.integrations ?? null} />
       {snapshot && (
         <ReviewActionsProvider
           updateDeadline={reviewState.updateDeadline}
           updateStatus={reviewState.updateStatus}
         >
-          <Main data={snapshot} />
+          <Main
+            data={snapshot}
+            markUpdateRead={reviewState.markUpdateRead}
+            markAllUpdateRead={reviewState.markAllUpdateRead}
+          />
         </ReviewActionsProvider>
       )}
       <SettingsView settingsState={settingsState} />

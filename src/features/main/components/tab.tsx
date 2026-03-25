@@ -29,16 +29,16 @@ export default function Tabs({ tab, setTab, counts }: Props) {
         className={cn(s.tab, tab === 1 ? s.active : "")}
         onClick={() => setTab(1)}
       >
-        <P3>Done</P3>
+        <P3>Update</P3>
+        <span className={s.count}>
+          <P3>{counts[1]}</P3>
+        </span>
       </Button>
       <Button
         className={cn(s.tab, tab === 2 ? s.active : "")}
         onClick={() => setTab(2)}
       >
-        <P3>Update</P3>
-        <span className={s.count}>
-          <P3>{counts[2]}</P3>
-        </span>
+        <P3>Done</P3>
       </Button>
     </div>
   );

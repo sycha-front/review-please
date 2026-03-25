@@ -1,9 +1,5 @@
-import {
-  createContext,
-  useContext,
-  type PropsWithChildren,
-} from "react";
-import type { UseReviewDumpResult } from "../../hooks/useReviewDump";
+import { createContext, useContext, type PropsWithChildren } from "react";
+import type { UseReviewDumpResult } from "../hooks/useReviewDump";
 
 type ReviewActionsContextValue = Pick<
   UseReviewDumpResult,
@@ -32,7 +28,9 @@ export function useReviewActions() {
   const value = useContext(ReviewActionsContext);
 
   if (!value) {
-    throw new Error("useReviewActions must be used within ReviewActionsProvider");
+    throw new Error(
+      "useReviewActions must be used within ReviewActionsProvider",
+    );
   }
 
   return value;

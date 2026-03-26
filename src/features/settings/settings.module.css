@@ -1,0 +1,40 @@
+.label {
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.doubleColumn {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.helperText {
+  color: var(--gray-600);
+  font-size: 12px;
+  line-height: 14px;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.input:hover,
+.input:focus {
+  border: 1px solid var(--gray-300);
+}

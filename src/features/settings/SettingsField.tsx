@@ -1,9 +1,12 @@
-import { inputStyle, labelStyle, checkboxLabelStyle } from "./styles";
+import { P3 } from "../../common/typo";
+import s from "./settings.module.css";
 
 type TextFieldProps = {
   label: string;
   value: string;
   type?: "text" | "password";
+  placeholder?: string;
+  description?: string;
   onChange: (value: string) => void;
 };
 
@@ -11,17 +14,21 @@ export function SettingsTextField({
   label,
   value,
   type = "text",
+  placeholder,
+  description,
   onChange,
 }: TextFieldProps) {
   return (
-    <label style={labelStyle}>
+    <label className={s.label}>
       {label}
       <input
-        style={inputStyle}
+        className={s.input}
         type={type}
         value={value}
+        placeholder={placeholder}
         onChange={(event) => onChange(event.currentTarget.value)}
       />
+      {description && <span className={s.helperText}>{description}</span>}
     </label>
   );
 }
@@ -38,10 +45,10 @@ export function SettingsNumberField({
   onChange,
 }: NumberFieldProps) {
   return (
-    <label style={labelStyle}>
+    <label className={s.label}>
       {label}
       <input
-        style={inputStyle}
+        className={s.input}
         type="number"
         value={value}
         onChange={(event) => onChange(Number(event.currentTarget.value))}
@@ -62,13 +69,13 @@ export function SettingsCheckboxField({
   onChange,
 }: CheckboxFieldProps) {
   return (
-    <label style={checkboxLabelStyle}>
+    <label className={s.checkbox}>
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.currentTarget.checked)}
       />
-      {label}
+      <P3>{label}</P3>
     </label>
   );
 }

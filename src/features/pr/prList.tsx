@@ -11,6 +11,8 @@ import cn from "../../utils/cn";
 import { bracketRegex } from "../../utils/regex";
 import Controls from "./components/controls";
 import DateInput from "./components/dateInput";
+import Search from "./components/search";
+import usePrSearch from "./hooks/usePrSearch";
 import StatusCheckbox from "./components/statusCheckbox";
 import s from "./pr.module.css";
 
@@ -47,8 +49,9 @@ export default function PrList({
   storageKey: string;
   defaultSortField?: SortField;
 }) {
+  const search = usePrSearch(items);
   const sorted = useSort({
-    items,
+    items: search.filteredItems,
     storageKey,
     options: reviewSortOptions,
     defaultField: defaultSortField,
@@ -57,7 +60,9 @@ export default function PrList({
 
   return (
     <div className={cn(isVisible ? s.visible : s.hidden)}>
-      <Controls sorted={sorted} />
+      <Controls sorted={sorted}>
+        <Search value={search.query} onChange={search.setQuery} />
+      </Controls>
       <ul
         className={cn(
           s.list,

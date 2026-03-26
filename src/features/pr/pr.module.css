@@ -42,6 +42,7 @@
   justify-content: space-between;
   align-items: flex-end;
   margin-top: 4px;
+  flex-wrap: wrap;
 
   & a {
     color: var(--gray-600);

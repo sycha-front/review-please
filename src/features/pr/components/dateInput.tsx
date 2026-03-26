@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useReviewActions } from "../../../context/ReviewActionsContext";
 import { ReviewItem } from "../../../hooks/useReviewDump";
 import cn from "../../../utils/cn";
@@ -11,6 +11,7 @@ type Props = {
 export default function DateInput({ item }: Props) {
   const { updateDeadline } = useReviewActions();
   const [isSavingDeadline, setIsSavingDeadline] = useState(false);
+  const deadlineLabel = item.deadline_date ?? "마감일 지정";
 
   async function handleDeadlineChange(
     event: React.ChangeEvent<HTMLInputElement>,
@@ -26,21 +27,21 @@ export default function DateInput({ item }: Props) {
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     } finally {
+      console.log("saved");
       setIsSavingDeadline(false);
     }
-
-    useEffect(() => {
-      console.log("item.deadline_date:", item.deadline_date);
-    }, [item.deadline_date]);
   }
 
   return (
-    <input
-      className={cn(s.deadline, !item.deadline_date ? "" : s.able)}
-      type="date"
-      value={item.deadline_date ?? undefined}
-      disabled={isSavingDeadline}
-      onChange={handleDeadlineChange}
-    />
+    <label className={cn(s.deadline, item.deadline_date ? s.able : "")}>
+      <span>{deadlineLabel}</span>
+      <input
+        className={s.hiddenDateInput}
+        type="date"
+        value={item.deadline_date ?? ""}
+        disabled={isSavingDeadline}
+        onChange={handleDeadlineChange}
+      />
+    </label>
   );
 }

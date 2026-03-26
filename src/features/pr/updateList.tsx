@@ -3,6 +3,7 @@ import { H4, P3 } from "../../common/typo";
 import { useReviewActions } from "../../context/ReviewActionsContext";
 import { UpdateFeedItem } from "../../hooks/useReviewDump";
 import { useSort, type SortOptionConfig } from "../../hooks/useSort";
+import { getGithubProps } from "../../utils";
 import cn from "../../utils/cn";
 import Controls from "./components/controls";
 import StatusCheckbox from "./components/statusCheckbox";
@@ -49,8 +50,9 @@ export default function UpdateList({
       <ul
         className={cn(
           s.list,
-          sorted.sortOptions.find((option) => option.value === sorted.currentField)
-            ?.direction === "desc"
+          sorted.sortOptions.find(
+            (option) => option.value === sorted.currentField,
+          )?.direction === "desc"
             ? s.listReverse
             : "",
         )}
@@ -75,27 +77,22 @@ export function UpdateFeedCard({
   item: UpdateFeedItem;
   onRead: () => Promise<void>;
 }) {
+  const eventLink = getGithubProps(item.target_url);
+  const repoLink = getGithubProps(`${item.repo_label}`);
+
   return (
     <li className={cn(s.item, item.is_read ? s.read : "")}>
       <H4 className={s.title}>
-        <a href={item.target_url} target="_blank" rel="noreferrer">
-          {item.headline}
-        </a>
+        <a {...eventLink}>{item.headline}</a>
       </H4>
       {item.summary && <P3 className={s.desc}>{item.summary}</P3>}
       <P3>{item.time_label}</P3>
       <div className={s.credit}>
+        <P3>{item.actor_login ?? "unknown"} </P3>
         <P3>
-          <a
-            href={"https://github.com/" + item.actor_login}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {item.actor_login ?? "unknown"}
-          </a>{" "}
-          {item.actor_context}
-          {item.event_count > 1 ? ` · ${item.event_count}개 활동` : ""}
+          <a {...repoLink}>{item.actor_context}</a>
         </P3>
+        <P3>{item.event_count > 1 ? `· ${item.event_count}개 활동` : ""}</P3>
         <StatusCheckbox
           checked={item.is_read}
           label="읽음"

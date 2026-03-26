@@ -1,8 +1,10 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import Button from "../../../common/button";
+import Tooltip from "../../../common/tooltip";
+import { P3 } from "../../../common/typo";
 import type { ReleaseStatus } from "../../../hooks/useReleaseStatus";
-import s from "../header.module.css";
+import s from "./versionBanner.module.css";
 
 type VersionBannerProps = {
   releaseStatus: ReleaseStatus | null;
@@ -25,10 +27,11 @@ export default function VersionBanner({
 
   if (releaseStatus.error) {
     return (
-      <div className={s.versionBanner}>
-        <p className={s.versionTitle}>버전 확인에 실패했어요.</p>
-        <p className={s.versionDesc}>{releaseStatus.error}</p>
-      </div>
+      <Tooltip message={releaseStatus.error}>
+        <div className={s.versionBanner}>
+          <P3>버전 확인에 실패했어요.</P3>
+        </div>
+      </Tooltip>
     );
   }
 
@@ -39,12 +42,12 @@ export default function VersionBanner({
   return (
     <div className={s.versionBanner}>
       <div>
-        <p className={s.versionTitle}>
+        <P3 className={s.versionTitle}>
           새 버전 {releaseStatus.latestVersion} 이 있습니다.
-        </p>
-        <p className={s.versionDesc}>
+        </P3>
+        <P3 className={s.versionDesc}>
           현재 버전 {releaseStatus.currentVersion} 에서 업데이트할 수 있어요.
-        </p>
+        </P3>
         {updateError && <p className={s.versionError}>{updateError}</p>}
       </div>
       <div className={s.versionActions}>

@@ -14,7 +14,7 @@ const UPDATE_SORT_STORAGE_KEY = "review-please.sort.update";
 const DONE_SORT_STORAGE_KEY = "review-please.sort.done";
 
 export default function Main({ data }: Props) {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(1);
   const unreadUpdateCount = data.update_feed.filter(
     (item) => !item.is_read,
   ).length;

@@ -1,5 +1,7 @@
+import Button from "../../common/button";
 import { H4, P3 } from "../../common/typo";
 import { useReviewActions } from "../../context/ReviewActionsContext";
+import { useIncrementalList } from "../../hooks/useIncrementalList";
 import { ReviewItem } from "../../hooks/useReviewDump";
 import {
   useSort,
@@ -12,8 +14,8 @@ import { bracketRegex } from "../../utils/regex";
 import Controls from "./components/controls";
 import DateInput from "./components/dateInput";
 import Search from "./components/search";
-import usePrSearch from "./hooks/usePrSearch";
 import StatusCheckbox from "./components/statusCheckbox";
+import usePrSearch from "./hooks/usePrSearch";
 import s from "./pr.module.css";
 
 type Props = {
@@ -57,6 +59,13 @@ export default function PrList({
     defaultField: defaultSortField,
     tieBreaker: (item) => item.created_at,
   });
+  const isDescending =
+    sorted.sortOptions.find((option) => option.value === sorted.currentField)
+      ?.direction === "desc";
+  const paginated = useIncrementalList(sorted.items, {
+    resetKey: search.query,
+    reverse: isDescending,
+  });
 
   return (
     <div className={cn(isVisible ? s.visible : s.hidden)}>
@@ -73,10 +82,15 @@ export default function PrList({
             : "",
         )}
       >
-        {sorted.items.map((item) => (
+        {paginated.visibleItems.map((item) => (
           <PrItem key={item.id} item={item} />
         ))}
-        {sorted.items.length === 0 && "없어용"}
+        {paginated.visibleItems.length === 0 && "없어용"}
+        {paginated.hasMore && (
+          <Button className={s.loadMoreButton} onClick={paginated.loadMore}>
+            <P3>더 보기</P3>
+          </Button>
+        )}
       </ul>
     </div>
   );

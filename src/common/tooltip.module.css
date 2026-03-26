@@ -6,14 +6,17 @@
   & .message {
     position: absolute;
     background-color: #1d1d1fa0;
+    backdrop-filter: blur(20px);
     color: var(--white);
     width: fit-content;
-    border-radius: 999px;
+    border-radius: var(--border-radius);
     padding: 4px 8px;
     transform: translateY(92%);
+    top: 4px;
     left: 0;
     opacity: 0;
     pointer-events: none;
+    z-index: 1000;
     transition: all 0.2s var(--cubic);
   }
 }

@@ -3,7 +3,7 @@ import type { UseReviewDumpResult } from "../hooks/useReviewDump";
 
 type ReviewActionsContextValue = Pick<
   UseReviewDumpResult,
-  "updateDeadline" | "updateStatus"
+  "updateDeadline" | "updateStatus" | "markUpdateRead" | "markAllUpdateRead"
 >;
 
 const ReviewActionsContext = createContext<ReviewActionsContextValue | null>(
@@ -14,11 +14,20 @@ type ReviewActionsProviderProps = PropsWithChildren<ReviewActionsContextValue>;
 
 export function ReviewActionsProvider({
   children,
+  markAllUpdateRead,
+  markUpdateRead,
   updateDeadline,
   updateStatus,
 }: ReviewActionsProviderProps) {
   return (
-    <ReviewActionsContext.Provider value={{ updateDeadline, updateStatus }}>
+    <ReviewActionsContext.Provider
+      value={{
+        markAllUpdateRead,
+        markUpdateRead,
+        updateDeadline,
+        updateStatus,
+      }}
+    >
       {children}
     </ReviewActionsContext.Provider>
   );

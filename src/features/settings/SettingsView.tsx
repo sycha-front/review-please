@@ -1,25 +1,21 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 
-import type { UseSettingsResult } from "../../hooks/useSettings";
+import { useSettings } from "../../hooks/useSettings";
 import type { SettingsPayload } from "../../types/settings";
 import { SettingsForm } from "./SettingsForm";
 import { errorTextStyle, loadingTextStyle } from "./styles";
 
 import i from "../../styles/index.module.css";
 
-type SettingsViewProps = {
-  settingsState: UseSettingsResult;
-};
-
-export function SettingsView({ settingsState }: SettingsViewProps) {
+export function SettingsView() {
   const {
     settings,
     error: settingsError,
     isLoading: isSettingsLoading,
     isSaving,
     saveSettings,
-  } = settingsState;
+  } = useSettings();
   const [form, setForm] = useState<SettingsPayload | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -58,7 +54,7 @@ export function SettingsView({ settingsState }: SettingsViewProps) {
   }
 
   return (
-    <section className={i.panel}>
+    <section className={i.panel} id="settings">
       {isSettingsLoading && (
         <div style={loadingTextStyle}>Loading settings...</div>
       )}

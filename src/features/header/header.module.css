@@ -3,6 +3,11 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+
+  & > p {
+    display: flex;
+    align-items: center;
+  }
 }
 
 .statusRow {
@@ -16,4 +21,18 @@
   font-size: 12px;
   margin-top: 4px;
   line-height: 14px;
+}
+
+.settingButton {
+  height: 28px;
+  width: 28px;
+  background-color: transparent;
+  border: none;
+
+  & svg {
+    padding: 4px;
+    height: 28px;
+    width: 28px;
+    box-sizing: border-box;
+  }
 }

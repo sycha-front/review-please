@@ -1,6 +1,7 @@
 import Button from "../../common/button";
 import { H4, P3 } from "../../common/typo";
 import { useReviewActions } from "../../context/ReviewActionsContext";
+import { useIncrementalList } from "../../hooks/useIncrementalList";
 import { UpdateFeedItem } from "../../hooks/useReviewDump";
 import { useSort, type SortOptionConfig } from "../../hooks/useSort";
 import { getGithubProps } from "../../utils";
@@ -36,6 +37,12 @@ export default function UpdateList({
     defaultField: "latest",
     tieBreaker: (item) => item.id,
   });
+  const isDescending =
+    sorted.sortOptions.find((option) => option.value === sorted.currentField)
+      ?.direction === "desc";
+  const paginated = useIncrementalList(sorted.items, {
+    reverse: isDescending,
+  });
 
   return (
     <div className={cn(isVisible ? s.visible : s.hidden)}>
@@ -57,14 +64,19 @@ export default function UpdateList({
             : "",
         )}
       >
-        {sorted.items.map((item) => (
+        {paginated.visibleItems.map((item) => (
           <UpdateFeedCard
             key={item.id}
             item={item}
             onRead={() => markUpdateRead(item.source_event_ids)}
           />
         ))}
-        {sorted.items.length === 0 && "없어용"}
+        {paginated.visibleItems.length === 0 && "없어용"}
+        {paginated.hasMore && (
+          <Button className={s.loadMoreButton} onClick={paginated.loadMore}>
+            <P3>더 보기</P3>
+          </Button>
+        )}
       </ul>
     </div>
   );

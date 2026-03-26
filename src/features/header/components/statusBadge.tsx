@@ -12,13 +12,6 @@ export default function StatusBadge({
   label: string;
   integration: IntegrationsSummary["github"];
 }) {
-  const statusLabel =
-    integration.status === "connected"
-      ? "연결됨"
-      : integration.status === "error"
-        ? "오류"
-        : "대기 중";
-
   return (
     <Tooltip
       message={integration.status === "error" ? integration.last_error : null}

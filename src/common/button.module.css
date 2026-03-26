@@ -7,3 +7,8 @@
   border-radius: 999px;
   border: none;
 }
+
+.button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}

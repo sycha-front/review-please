@@ -65,3 +65,13 @@
 .listReverse {
   flex-direction: column-reverse;
 }
+
+.loadMoreButton {
+  width: 100%;
+  border-radius: unset;
+  background-color: var(--white);
+  color: var(--black);
+  border-top: 1px solid var(--gray-100);
+  border-bottom-left-radius: var(--border-radius);
+  border-bottom-right-radius: var(--border-radius);
+}

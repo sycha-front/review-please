@@ -29,19 +29,19 @@ export default function Main({ data }: Props) {
       <Tabs
         tab={tab}
         setTab={handleTabClick}
-        counts={[data.pending.length, unreadUpdateCount, data.done.length]}
+        counts={[unreadUpdateCount, data.pending.length, data.done.length]}
       />
       <article className={s.tabContent}>
-        <PrList
+        <UpdateList
           isVisible={tab === 0}
+          items={data.update_feed}
+          storageKey={UPDATE_SORT_STORAGE_KEY}
+        />
+        <PrList
+          isVisible={tab === 1}
           items={data.pending}
           storageKey={PENDING_SORT_STORAGE_KEY}
           defaultSortField="deadline"
-        />
-        <UpdateList
-          isVisible={tab === 1}
-          items={data.update_feed}
-          storageKey={UPDATE_SORT_STORAGE_KEY}
         />
         <PrList
           isVisible={tab === 2}

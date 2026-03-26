@@ -16,7 +16,7 @@ export default function Tabs({ tab, setTab, counts }: Props) {
         className={cn(s.tab, tab === 0 ? s.active : "")}
         onClick={() => setTab(0)}
       >
-        <P3>Pending</P3>
+        <P3>새 소식</P3>
         <span className={s.count}>
           <P3>{counts[0]}</P3>
         </span>
@@ -29,7 +29,7 @@ export default function Tabs({ tab, setTab, counts }: Props) {
         className={cn(s.tab, tab === 1 ? s.active : "")}
         onClick={() => setTab(1)}
       >
-        <P3>Update</P3>
+        <P3>대기 중</P3>
         <span className={s.count}>
           <P3>{counts[1]}</P3>
         </span>
@@ -38,7 +38,7 @@ export default function Tabs({ tab, setTab, counts }: Props) {
         className={cn(s.tab, tab === 2 ? s.active : "")}
         onClick={() => setTab(2)}
       >
-        <P3>Done</P3>
+        <P3>완료</P3>
       </Button>
     </div>
   );

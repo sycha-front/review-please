@@ -1,9 +1,15 @@
 import { H4, P3 } from "../../common/typo";
 import { useReviewActions } from "../../context/ReviewActionsContext";
 import { ReviewItem } from "../../hooks/useReviewDump";
+import {
+  useSort,
+  type SortField,
+  type SortOptionConfig,
+} from "../../hooks/useSort";
 import { getGithubProps } from "../../utils";
 import cn from "../../utils/cn";
 import { bracketRegex } from "../../utils/regex";
+import Controls from "./components/controls";
 import DateInput from "./components/dateInput";
 import StatusCheckbox from "./components/statusCheckbox";
 import s from "./pr.module.css";
@@ -12,20 +18,62 @@ type Props = {
   item: ReviewItem;
 };
 
+const MAX_DEADLINE = "9999-12-31";
+
+const reviewSortOptions: SortOptionConfig<ReviewItem>[] = [
+  {
+    value: "deadline",
+    label: "마감일",
+    defaultDirection: "asc",
+    getValue: (item) => item.deadline_date ?? MAX_DEADLINE,
+  },
+  {
+    value: "latest",
+    label: "최신",
+    defaultDirection: "desc",
+    getValue: (item) =>
+      item.completed_at ?? item.pr_merged_at ?? item.updated_at,
+  },
+];
+
 export default function PrList({
   items,
-  className = "",
+  isVisible,
+  storageKey,
+  defaultSortField = "latest",
 }: {
   items: ReviewItem[];
-  className?: string;
+  isVisible: boolean;
+  storageKey: string;
+  defaultSortField?: SortField;
 }) {
+  const sorted = useSort({
+    items,
+    storageKey,
+    options: reviewSortOptions,
+    defaultField: defaultSortField,
+    tieBreaker: (item) => item.created_at,
+  });
+
   return (
-    <ul className={cn(s.list, className)}>
-      {items.map((item) => (
-        <PrItem key={item.id} item={item} />
-      ))}
-      {items.length === 0 && "없어용"}
-    </ul>
+    <div className={cn(isVisible ? s.visible : s.hidden)}>
+      <Controls sorted={sorted} />
+      <ul
+        className={cn(
+          s.list,
+          sorted.sortOptions.find(
+            (option) => option.value === sorted.currentField,
+          )?.direction === "desc"
+            ? s.listReverse
+            : "",
+        )}
+      >
+        {sorted.items.map((item) => (
+          <PrItem key={item.id} item={item} />
+        ))}
+        {sorted.items.length === 0 && "없어용"}
+      </ul>
+    </div>
   );
 }
 
@@ -34,7 +82,7 @@ export function PrItem({ item }: Props) {
   const repoLink = getGithubProps(`${item.repo_owner}/${item.repo_name}`);
 
   return (
-    <li className={s.item}>
+    <li className={cn(s.item, item.status ? s.read : "")}>
       <H4 className={s.title}>
         <a href={item.pr_url} target="_blank" rel="noreferrer">
           {item.pr_title}

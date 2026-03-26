@@ -1,9 +1,14 @@
 .list {
   list-style-type: none;
-  margin: 16px 0;
+  margin: 0 0 16px;
   min-height: 40px;
   background-color: var(--white);
   border-radius: var(--border-radius);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
 }
 
 .desc {
@@ -21,7 +26,6 @@
   padding: 12px;
   background-color: var(--white);
   border-radius: var(--border-radius);
-  margin-bottom: 4px;
   font-size: 16px;
   word-break: keep-all;
 }
@@ -36,11 +40,27 @@
 .credit {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   margin-top: 4px;
 
   & a {
     color: var(--gray-600);
     text-decoration: underline;
   }
+}
+
+.visible {
+  display: block;
+}
+
+.hidden {
+  display: none;
+}
+
+.read {
+  opacity: 0.5;
+}
+
+.listReverse {
+  flex-direction: column-reverse;
 }

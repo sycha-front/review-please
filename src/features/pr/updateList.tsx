@@ -1,48 +1,68 @@
 import Button from "../../common/button";
 import { H4, P3 } from "../../common/typo";
+import { useReviewActions } from "../../context/ReviewActionsContext";
 import { UpdateFeedItem } from "../../hooks/useReviewDump";
+import { useSort, type SortOptionConfig } from "../../hooks/useSort";
 import cn from "../../utils/cn";
+import Controls from "./components/controls";
 import StatusCheckbox from "./components/statusCheckbox";
 import s from "./pr.module.css";
 
-export default function UpdateFeedList({
+const updateSortOptions: SortOptionConfig<UpdateFeedItem>[] = [
+  {
+    value: "latest",
+    label: "최신",
+    defaultDirection: "desc",
+    getValue: (item) => item.occurred_at,
+  },
+];
+
+export default function UpdateList({
   items,
-  markUpdateRead,
-  markAllUpdateRead,
-  className = "",
+  isVisible,
+  storageKey,
 }: {
   items: UpdateFeedItem[];
-  markUpdateRead: (eventIds: string[]) => Promise<void>;
-  markAllUpdateRead: () => Promise<void>;
-  className?: string;
+  isVisible: boolean;
+  storageKey: string;
 }) {
+  const { markAllUpdateRead, markUpdateRead } = useReviewActions();
   const unreadCount = items.filter((item) => !item.is_read).length;
+  const sorted = useSort({
+    items,
+    storageKey,
+    options: updateSortOptions,
+    defaultField: "latest",
+    tieBreaker: (item) => item.id,
+  });
 
   return (
-    <div className={cn(className)}>
-      <div className={s.updateActions}>
-        <P3>
-          {unreadCount > 0
-            ? `${unreadCount}개 origin 안 읽음`
-            : "모두 읽었어요"}
-        </P3>
+    <div className={cn(isVisible ? s.visible : s.hidden)}>
+      <Controls sorted={sorted}>
         <Button
-          className={s.readButton}
           disabled={unreadCount === 0}
           onClick={() => void markAllUpdateRead()}
         >
-          모두 읽음 처리
+          <P3>모두 읽기</P3>
         </Button>
-      </div>
-      <ul className={s.list}>
-        {items.map((item) => (
+      </Controls>
+      <ul
+        className={cn(
+          s.list,
+          sorted.sortOptions.find((option) => option.value === sorted.currentField)
+            ?.direction === "desc"
+            ? s.listReverse
+            : "",
+        )}
+      >
+        {sorted.items.map((item) => (
           <UpdateFeedCard
             key={item.id}
             item={item}
             onRead={() => markUpdateRead(item.source_event_ids)}
           />
         ))}
-        {items.length === 0 && "없어용"}
+        {sorted.items.length === 0 && "없어용"}
       </ul>
     </div>
   );
@@ -56,7 +76,7 @@ export function UpdateFeedCard({
   onRead: () => Promise<void>;
 }) {
   return (
-    <li className={cn(s.item)}>
+    <li className={cn(s.item, item.is_read ? s.read : "")}>
       <H4 className={s.title}>
         <a href={item.target_url} target="_blank" rel="noreferrer">
           {item.headline}

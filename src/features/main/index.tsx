@@ -1,48 +1,53 @@
 import { useState } from "react";
 import type { ReviewDump } from "../../hooks/useReviewDump";
-import cn from "../../utils/cn";
 import PrList from "../pr/prList";
-import UpdateFeedList from "../pr/updateList";
+import UpdateList from "../pr/updateList";
 import Tabs from "./components/tab";
 import s from "./components/tab.module.css";
 
 type Props = {
   data: ReviewDump;
-  markUpdateRead: (eventIds: string[]) => Promise<void>;
-  markAllUpdateRead: () => Promise<void>;
 };
 
-export default function Main({
-  data,
-  markUpdateRead,
-  markAllUpdateRead,
-}: Props) {
+const PENDING_SORT_STORAGE_KEY = "review-please.sort.pending";
+const UPDATE_SORT_STORAGE_KEY = "review-please.sort.update";
+const DONE_SORT_STORAGE_KEY = "review-please.sort.done";
+
+export default function Main({ data }: Props) {
   const [tab, setTab] = useState(0);
   const unreadUpdateCount = data.update_feed.filter(
     (item) => !item.is_read,
   ).length;
 
+  function handleTabClick(tab: number) {
+    document.getElementById("tab")?.scrollIntoView();
+    setTab(tab);
+  }
+
   return (
     <section>
       <Tabs
         tab={tab}
-        setTab={setTab}
+        setTab={handleTabClick}
         counts={[data.pending.length, unreadUpdateCount, data.done.length]}
       />
       <article className={s.tabContent}>
         <PrList
-          className={cn(tab === 0 ? s.visible : s.hidden)}
+          isVisible={tab === 0}
           items={data.pending}
+          storageKey={PENDING_SORT_STORAGE_KEY}
+          defaultSortField="deadline"
         />
-        <UpdateFeedList
-          className={cn(tab === 1 ? s.visible : s.hidden)}
+        <UpdateList
+          isVisible={tab === 1}
           items={data.update_feed}
-          markUpdateRead={markUpdateRead}
-          markAllUpdateRead={markAllUpdateRead}
+          storageKey={UPDATE_SORT_STORAGE_KEY}
         />
         <PrList
-          className={cn(tab === 2 ? s.visible : s.hidden)}
+          isVisible={tab === 2}
           items={data.done}
+          storageKey={DONE_SORT_STORAGE_KEY}
+          defaultSortField="latest"
         />
       </article>
     </section>

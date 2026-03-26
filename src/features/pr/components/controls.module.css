@@ -1,0 +1,66 @@
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 12px 0;
+
+  & button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    padding: 2px 8px;
+  }
+}
+
+.group {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.controlButton {
+  cursor: pointer;
+  appearance: none;
+  border: none;
+  background-color: transparent;
+  color: var(--gray-600);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.5;
+
+  & p {
+    position: relative;
+  }
+}
+
+.controlButton:disabled {
+  cursor: default;
+}
+
+.active {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.active p::after {
+  content: "";
+  width: 110%;
+  height: 100%;
+  border-bottom: 1px solid var(--black);
+  position: absolute;
+  top: 0;
+  left: -5%;
+}
+
+.up {
+  & svg {
+    transform: rotate(-90deg);
+  }
+}
+
+.down {
+  & svg {
+    transform: rotate(90deg);
+  }
+}

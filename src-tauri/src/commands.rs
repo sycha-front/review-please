@@ -65,9 +65,7 @@ pub struct UpdateReviewStatusPayload {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RunAppUpdatePayload {
-    pub repo_path: String,
-}
+pub struct RunAppUpdatePayload {}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,28 +97,25 @@ pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String>
 }
 
 #[tauri::command]
-pub fn get_release_status() -> ReleaseStatus {
-    crate::services::release::fetch_release_status()
+pub async fn get_release_status(app: AppHandle) -> ReleaseStatus {
+    crate::services::release::fetch_release_status(&app).await
 }
 
 #[tauri::command]
-pub fn run_app_update(
-    payload: RunAppUpdatePayload,
+pub async fn run_app_update(
+    _payload: RunAppUpdatePayload,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    crate::services::app_update::spawn_update_process(&payload.repo_path)
+    let did_install = crate::services::app_update::install_latest_release(&app)
+        .await
         .map_err(|error| error.to_string())?;
+    if !did_install {
+        return Ok(());
+    }
 
-    let app = app.clone();
-    let coordinator = state.coordinator.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        let _ = coordinator.stop();
-        app.exit(0);
-    });
-
-    Ok(())
+    let _ = state.coordinator.stop();
+    app.restart();
 }
 
 #[tauri::command]

@@ -24,7 +24,6 @@ type SettingsFormProps = {
 export function SettingsForm({
   form,
   isSaving,
-  saveMessage,
   onSubmit,
   onFieldChange,
 }: SettingsFormProps) {

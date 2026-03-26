@@ -10,6 +10,7 @@
     "tauri": "tauri",
     "app:build": "bash ./scripts/build-app.sh",
     "app:install": "bash ./scripts/install-app.sh",
+    "app:release": "bash ./scripts/prepare-release.sh",
     "app:update": "bash ./scripts/update-app.sh",
     "app:login-enable": "bash ./scripts/enable-login.sh",
     "app:login-disable": "bash ./scripts/disable-login.sh",

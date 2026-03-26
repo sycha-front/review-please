@@ -8,7 +8,6 @@ import s from "./versionBanner.module.css";
 
 type VersionBannerProps = {
   releaseStatus: ReleaseStatus | null;
-  repoPath: string;
   isUpdating: boolean;
   updateError: string | null;
   onUpdate: () => Promise<void>;
@@ -16,7 +15,6 @@ type VersionBannerProps = {
 
 export default function VersionBanner({
   releaseStatus,
-  repoPath,
   isUpdating,
   updateError,
   onUpdate,
@@ -51,16 +49,14 @@ export default function VersionBanner({
         {updateError && <p className={s.versionError}>{updateError}</p>}
       </div>
       <div className={s.versionActions}>
-        {repoPath && (
-          <Button
-            className={s.versionButton}
-            disabled={isUpdating}
-            onClick={() => void onUpdate()}
-            type="button"
-          >
-            {isUpdating ? "업데이트 준비 중..." : "원클릭 업데이트"}
-          </Button>
-        )}
+        <Button
+          className={s.versionButton}
+          disabled={isUpdating}
+          onClick={() => void onUpdate()}
+          type="button"
+        >
+          {isUpdating ? "업데이트 준비 중..." : "원클릭 업데이트"}
+        </Button>
         {releaseStatus.latestReleaseUrl && (
           <Button
             className={s.versionButton}

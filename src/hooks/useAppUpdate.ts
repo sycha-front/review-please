@@ -4,19 +4,17 @@ import { startTransition, useState } from "react";
 type UseAppUpdateResult = {
   isUpdating: boolean;
   error: string | null;
-  runUpdate: (repoPath: string) => Promise<void>;
+  runUpdate: () => Promise<void>;
 };
 
 export function useAppUpdate(): UseAppUpdateResult {
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function runUpdate(repoPath: string) {
+  async function runUpdate() {
     setIsUpdating(true);
     try {
-      await invoke("run_app_update", {
-        payload: { repoPath },
-      });
+      await invoke("run_app_update", { payload: {} });
       startTransition(() => {
         setError(null);
       });

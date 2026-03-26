@@ -1,11 +1,11 @@
-use std::process::Command;
-
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
-use serde::Deserialize;
+use tauri::{AppHandle, Runtime};
+use tauri_plugin_updater::{Update, Updater, UpdaterExt};
+use url::Url;
 
-const RELEASE_API_URL: &str =
-    "https://api.github.com/repos/sycha-front/pr-review-please/releases/latest";
+const DEFAULT_UPDATER_ENDPOINT: &str =
+    "https://github.com/sycha-front/pr-review-please/releases/latest/download/latest.json";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,29 +18,50 @@ pub struct ReleaseStatus {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct ReleaseResponse {
-    tag_name: String,
-    html_url: String,
-    published_at: Option<String>,
-}
-
-pub fn fetch_release_status() -> ReleaseStatus {
+pub async fn fetch_release_status<R: Runtime>(app: &AppHandle<R>) -> ReleaseStatus {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
-    match fetch_latest_release() {
-        Ok(release) => {
-            let latest_version = normalize_version(&release.tag_name);
-            ReleaseStatus {
-                is_update_available: compare_versions(&current_version, &latest_version)
-                    .map(|ordering| ordering.is_lt())
-                    .unwrap_or(false),
-                current_version,
-                latest_version: Some(latest_version),
-                latest_release_url: Some(release.html_url),
-                published_at: release.published_at,
-                error: None,
+    if compiled_pubkey().is_none() {
+        return ReleaseStatus {
+            current_version,
+            latest_version: None,
+            latest_release_url: None,
+            published_at: None,
+            is_update_available: false,
+            error: None,
+        };
+    }
+
+    match build_updater(app) {
+        Ok(updater) => match updater.check().await {
+            Ok(Some(update)) => {
+                let latest_release_url = extract_string_field(&update, "release_url");
+                let published_at = extract_string_field(&update, "pub_date");
+                ReleaseStatus {
+                    current_version,
+                    latest_version: Some(update.version),
+                    latest_release_url,
+                    published_at,
+                    is_update_available: true,
+                    error: None,
+                }
             }
-        }
+            Ok(None) => ReleaseStatus {
+                current_version,
+                latest_version: None,
+                latest_release_url: None,
+                published_at: None,
+                is_update_available: false,
+                error: None,
+            },
+            Err(error) => ReleaseStatus {
+                current_version,
+                latest_version: None,
+                latest_release_url: None,
+                published_at: None,
+                is_update_available: false,
+                error: Some(error.to_string()),
+            },
+        },
         Err(error) => ReleaseStatus {
             current_version,
             latest_version: None,
@@ -52,42 +73,58 @@ pub fn fetch_release_status() -> ReleaseStatus {
     }
 }
 
-fn fetch_latest_release() -> Result<ReleaseResponse> {
-    let output = Command::new("curl")
-        .args([
-            "-sS",
-            "-L",
-            RELEASE_API_URL,
-            "-H",
-            "Accept: application/vnd.github+json",
-            "-H",
-            "User-Agent: review-please/0.1.0",
-        ])
-        .output()
-        .with_context(|| format!("failed to call GitHub releases API {RELEASE_API_URL}"))?;
-    if !output.status.success() {
+pub fn build_updater<R: Runtime>(app: &AppHandle<R>) -> Result<Updater> {
+    let endpoint_url = updater_endpoint();
+    let endpoint = Url::parse(endpoint_url)
+        .with_context(|| format!("failed to parse updater endpoint {endpoint_url}"))?;
+    app.updater_builder()
+        .pubkey(required_pubkey()?)
+        .endpoints(vec![endpoint])?
+        .build()
+        .context("failed to build updater")
+}
+
+fn updater_endpoint() -> &'static str {
+    option_env!("TAURI_UPDATER_ENDPOINT").unwrap_or(DEFAULT_UPDATER_ENDPOINT)
+}
+
+fn required_pubkey() -> Result<&'static str> {
+    let Some(value) = compiled_pubkey() else {
         return Err(anyhow!(
-            "curl failed for GitHub releases API: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            "TAURI_UPDATER_PUBLIC_KEY was not set when building the app"
         ));
-    }
-
-    serde_json::from_slice(&output.stdout).context("failed to decode latest GitHub release")
+    };
+    Ok(value)
 }
 
-fn normalize_version(value: &str) -> String {
-    value.trim().trim_start_matches('v').to_string()
+fn compiled_pubkey() -> Option<&'static str> {
+    option_env!("TAURI_UPDATER_PUBLIC_KEY").and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
 }
 
-fn compare_versions(current: &str, latest: &str) -> Option<std::cmp::Ordering> {
-    let current_parts = parse_version_parts(current)?;
-    let latest_parts = parse_version_parts(latest)?;
-    Some(current_parts.cmp(&latest_parts))
+fn extract_string_field(update: &Update, key: &str) -> Option<String> {
+    update
+        .raw_json
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
 }
 
-fn parse_version_parts(value: &str) -> Option<Vec<u64>> {
-    value
-        .split('.')
-        .map(|part| part.parse::<u64>().ok())
-        .collect()
+pub async fn download_and_install<R: Runtime>(app: &AppHandle<R>) -> Result<bool> {
+    let Some(update) = build_updater(app)?.check().await? else {
+        return Ok(false);
+    };
+
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .context("failed to download and install update")?;
+
+    Ok(true)
 }

@@ -3,7 +3,6 @@ import { H1 } from "../../common/typo";
 import { useAppUpdate } from "../../hooks/useAppUpdate";
 import { useReleaseStatus } from "../../hooks/useReleaseStatus";
 import type { IntegrationsSummary } from "../../hooks/useReviewDump";
-import { useSettings } from "../../hooks/useSettings";
 import StatusBadge from "./components/statusBadge";
 import VersionBanner from "./components/versionBanner";
 import s from "./header.module.css";
@@ -13,10 +12,8 @@ type HeaderProps = {
 };
 
 export default function Header({ integrations }: HeaderProps) {
-  const settingsState = useSettings();
   const releaseState = useReleaseStatus();
   const appUpdateState = useAppUpdate();
-  const repoPath = settingsState.settings?.repoPath ?? "";
 
   function goToSetting() {
     document.getElementById("settings")?.scrollIntoView();
@@ -44,12 +41,9 @@ export default function Header({ integrations }: HeaderProps) {
       </header>
       <VersionBanner
         releaseStatus={releaseState.releaseStatus}
-        repoPath={repoPath}
         isUpdating={appUpdateState.isUpdating}
         updateError={appUpdateState.error}
-        onUpdate={() =>
-          appUpdateState.runUpdate(settingsState.settings?.repoPath ?? "")
-        }
+        onUpdate={() => appUpdateState.runUpdate()}
       />
     </>
   );

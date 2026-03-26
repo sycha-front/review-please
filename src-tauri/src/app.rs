@@ -2,6 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use tauri::{ActivationPolicy, Manager};
+use tauri_plugin_updater::Builder as UpdaterBuilder;
 
 use crate::{
     commands,
@@ -19,6 +20,7 @@ use crate::{
 pub fn run_tray_app() -> Result<()> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(UpdaterBuilder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::get_review_dump,
             commands::get_release_status,

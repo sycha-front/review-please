@@ -307,7 +307,10 @@ impl SqliteStore {
             .flatten())
     }
 
-    fn last_error_message_with_connection(&self, connection: &Connection) -> Result<Option<String>> {
+    fn last_error_message_with_connection(
+        &self,
+        connection: &Connection,
+    ) -> Result<Option<String>> {
         Ok(connection
             .query_row(
                 "SELECT last_error FROM sync_state WHERE last_error IS NOT NULL ORDER BY last_polled_at DESC LIMIT 1;",
@@ -350,7 +353,9 @@ fn add_column_if_missing(
     Ok(())
 }
 
-fn collect_rows<T>(rows: rusqlite::MappedRows<'_, impl FnMut(&Row<'_>) -> rusqlite::Result<T>>) -> Result<Vec<T>> {
+fn collect_rows<T>(
+    rows: rusqlite::MappedRows<'_, impl FnMut(&Row<'_>) -> rusqlite::Result<T>>,
+) -> Result<Vec<T>> {
     let mut items = Vec::new();
     for row in rows {
         items.push(row?);
@@ -457,8 +462,10 @@ fn build_update_feed_item(
 
     let target_label = format!("PR #{} {}", request.pr_number, request.pr_title);
     let headline = if is_my_pr
-        && !matches!(event.notification_reason.as_str(), "mention" | "team_mention")
-    {
+        && !matches!(
+            event.notification_reason.as_str(),
+            "mention" | "team_mention"
+        ) {
         format!("내 PR #{}에 {}", request.pr_number, activity_label)
     } else {
         format!("{target_label}에 {activity_label}")
@@ -1054,7 +1061,9 @@ impl ReviewStore for SqliteStore {
                 pending_count,
                 done_count,
                 update_count,
-                last_sync_at: format_last_sync(self.last_sync_at_with_connection(&connection)?.as_deref()),
+                last_sync_at: format_last_sync(
+                    self.last_sync_at_with_connection(&connection)?.as_deref(),
+                ),
                 status: status.to_string(),
                 last_error,
             };
@@ -1074,7 +1083,9 @@ impl ReviewStore for SqliteStore {
             pending_count: pending.len() as u64,
             done_count: done.len() as u64,
             update_count: update.len() as u64,
-            last_sync_at: format_last_sync(self.last_sync_at_with_connection(&connection)?.as_deref()),
+            last_sync_at: format_last_sync(
+                self.last_sync_at_with_connection(&connection)?.as_deref(),
+            ),
             status: status.to_string(),
             last_error,
         })

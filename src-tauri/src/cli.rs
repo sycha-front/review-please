@@ -5,12 +5,13 @@ use anyhow::{anyhow, Result};
 use crate::{
     config::{self, AppConfig},
     db::{ReviewStore, SqliteStore},
-    keychain::{CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT},
-    providers::{github::LocalGithubProvider, slack::LocalSlackProvider, GithubProvider, SlackProvider},
-    services::{
-        github_events,
-        slack_ingest,
+    keychain::{
+        CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT,
     },
+    providers::{
+        github::LocalGithubProvider, slack::LocalSlackProvider, GithubProvider, SlackProvider,
+    },
+    services::{github_events, slack_ingest},
 };
 
 pub enum CliCommand {
@@ -62,7 +63,9 @@ impl CliCommand {
             "reset-state" => Ok(Some(Self::ResetState)),
             "clear-credentials" => Ok(Some(Self::ClearCredentials)),
             "help" | "--help" | "-h" => Ok(Some(Self::Help)),
-            _ => Err(anyhow!("unknown command `{command}`; run `review-please help`")),
+            _ => Err(anyhow!(
+                "unknown command `{command}`; run `review-please help`"
+            )),
         }
     }
 }
@@ -100,7 +103,9 @@ fn parse_setup(args: &[String]) -> Result<SetupArgs> {
             "--slack-token" => slack_token = Some(value.clone()),
             "--github-token" => github_token = Some(value.clone()),
             "--slack-poll-seconds" => slack_poll_interval_seconds = Some(value.parse::<u64>()?),
-            "--github-poll-seconds" => github_min_poll_interval_seconds = Some(value.parse::<u64>()?),
+            "--github-poll-seconds" => {
+                github_min_poll_interval_seconds = Some(value.parse::<u64>()?)
+            }
             "--done-menu-limit" => done_menu_limit = Some(value.parse::<usize>()?),
             _ => return Err(anyhow!("unknown setup flag `{flag}`")),
         }
@@ -175,7 +180,10 @@ fn run_doctor() -> Result<()> {
     let github_token = credentials.get(GITHUB_TOKEN_ACCOUNT)?.is_some();
     println!("config_path={}", config::config_path()?.display());
     println!("data_dir={}", config::data_dir()?.display());
-    println!("slack_keyword_set={}", !config.slack_mention_keywords().is_empty());
+    println!(
+        "slack_keyword_set={}",
+        !config.slack_mention_keywords().is_empty()
+    );
     println!("slack_token_set={slack_token}");
     println!("github_token_set={github_token}");
 
@@ -208,7 +216,9 @@ fn run_doctor() -> Result<()> {
 
 fn run_dump(format: &str) -> Result<()> {
     if format != "json" {
-        return Err(anyhow!("unsupported format `{format}`; only json is implemented"));
+        return Err(anyhow!(
+            "unsupported format `{format}`; only json is implemented"
+        ));
     }
     let config = AppConfig::load_or_default()?;
     let store = store()?;

@@ -6,7 +6,7 @@ use chrono::{Duration, Local};
 use crate::{
     config::AppConfig,
     db::ReviewStore,
-    models::{ReviewRequest, SyncState, newer_ts, utc_now_string},
+    models::{newer_ts, utc_now_string, ReviewRequest, SyncState},
     providers::{GithubProvider, SlackProvider},
 };
 
@@ -66,7 +66,11 @@ pub fn run(
         }
     }
 
-    messages.sort_by(|left, right| left.ts.partial_cmp(&right.ts).unwrap_or(std::cmp::Ordering::Equal));
+    messages.sort_by(|left, right| {
+        left.ts
+            .partial_cmp(&right.ts)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     for message in messages {
         if !newer_ts(&message.ts, last_seen) {
@@ -79,7 +83,8 @@ pub fn run(
         if pulls.is_empty() {
             continue;
         }
-        let base_date = slack_ts_to_local_date(&message.ts).unwrap_or_else(|| Local::now().date_naive());
+        let base_date =
+            slack_ts_to_local_date(&message.ts).unwrap_or_else(|| Local::now().date_naive());
         let deadline = extract_deadline(&message.text, base_date);
         let display_name = match slack_provider.fetch_user_display_name(&message.user_id) {
             Ok(Some(value)) => value,
@@ -128,7 +133,9 @@ pub fn run(
             let request = ReviewRequest::new(
                 &pull,
                 pr_title,
-                metadata.as_ref().and_then(|value| value.author_login.clone()),
+                metadata
+                    .as_ref()
+                    .and_then(|value| value.author_login.clone()),
                 metadata.as_ref().and_then(|value| value.merged_at.clone()),
                 message.user_id.clone(),
                 display_name.clone(),

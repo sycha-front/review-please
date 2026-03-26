@@ -114,7 +114,7 @@ pub async fn run_app_update(
         return Ok(());
     }
 
-    let _ = state.coordinator.stop();
+    state.mark_quitting();
     app.restart();
 }
 

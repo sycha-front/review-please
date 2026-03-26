@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs,
-    process::Command,
-    sync::Arc,
-};
+use std::{collections::HashMap, fs, process::Command, sync::Arc};
 
 use anyhow::{anyhow, Context, Error, Result};
 use regex::Regex;
@@ -13,13 +8,16 @@ use serde_json::json;
 use crate::{
     keychain::{CredentialStore, GITHUB_TOKEN_ACCOUNT},
     models::{
-        EventKind, GithubEvent, GithubNotificationThread, GithubPullRef, NotificationsPollResult,
-        PullRequestMetadata, SyncState, utc_now_string,
+        utc_now_string, EventKind, GithubEvent, GithubNotificationThread, GithubPullRef,
+        NotificationsPollResult, PullRequestMetadata, SyncState,
     },
 };
 
 pub fn is_related_reason(reason: &str) -> bool {
-    matches!(reason, "review_requested" | "mention" | "team_mention" | "author")
+    matches!(
+        reason,
+        "review_requested" | "mention" | "team_mention" | "author"
+    )
 }
 
 pub fn is_access_denied_error(error: &Error) -> bool {
@@ -71,11 +69,7 @@ impl LocalGithubProvider {
         }
         serde_json::from_str(&body).with_context(|| {
             let preview = body.chars().take(240).collect::<String>();
-            format!(
-                "failed to decode GitHub response from {}: {}",
-                url,
-                preview
-            )
+            format!("failed to decode GitHub response from {}: {}", url, preview)
         })
     }
 
@@ -124,7 +118,10 @@ impl LocalGithubProvider {
         let (body, status_raw) = stdout
             .rsplit_once("\n__CURL_STATUS__:")
             .ok_or_else(|| anyhow!("missing curl status marker"))?;
-        let status = status_raw.trim().parse::<u16>().context("invalid curl HTTP status")?;
+        let status = status_raw
+            .trim()
+            .parse::<u16>()
+            .context("invalid curl HTTP status")?;
         let headers_raw = fs::read_to_string(&header_path).unwrap_or_default();
         let _ = fs::remove_file(&header_path);
         let mut headers = HashMap::new();
@@ -164,7 +161,10 @@ impl LocalGithubProvider {
             .into_iter()
             .filter_map(|review| {
                 let event_at = review.submitted_at.clone()?;
-                if since.map(|value| event_at.as_str() <= value).unwrap_or(false) {
+                if since
+                    .map(|value| event_at.as_str() <= value)
+                    .unwrap_or(false)
+                {
                     return None;
                 }
                 let event_kind = match review.state.as_deref() {
@@ -213,7 +213,10 @@ impl LocalGithubProvider {
             .into_iter()
             .filter_map(|comment| {
                 let event_at = comment.created_at.clone()?;
-                if since.map(|value| event_at.as_str() <= value).unwrap_or(false) {
+                if since
+                    .map(|value| event_at.as_str() <= value)
+                    .unwrap_or(false)
+                {
                     return None;
                 }
                 let actor_login = comment.user.clone().and_then(|user| user.login);
@@ -255,7 +258,10 @@ impl LocalGithubProvider {
             .into_iter()
             .filter_map(|comment| {
                 let event_at = comment.created_at.clone()?;
-                if since.map(|value| event_at.as_str() <= value).unwrap_or(false) {
+                if since
+                    .map(|value| event_at.as_str() <= value)
+                    .unwrap_or(false)
+                {
                     return None;
                 }
                 let actor_login = comment.user.clone().and_then(|user| user.login);

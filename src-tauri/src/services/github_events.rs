@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::{
     config::AppConfig,
     db::ReviewStore,
-    models::{GithubPullRef, SyncState, utc_now_string},
+    models::{utc_now_string, GithubPullRef, SyncState},
     providers::{github::is_access_denied_error, GithubProvider},
     services::review_state::should_mark_done,
 };
@@ -47,8 +47,8 @@ pub fn run(
             }
         }
     }
-    let poll_result =
-        github_provider.fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
+    let poll_result = github_provider
+        .fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
 
     let mut next_state = SyncState::new(GITHUB_SYNC_SOURCE);
     next_state.last_polled_at = Some(utc_now_string());
@@ -70,8 +70,7 @@ pub fn run(
         };
         // Always rescan tracked PRs directly so we can backfill missed approvals even when
         // the notifications endpoint returns 304 or another actor's later event already exists.
-        let events = match github_provider.fetch_events_for_pull(&pull, None, &current_user_login)
-        {
+        let events = match github_provider.fetch_events_for_pull(&pull, None, &current_user_login) {
             Ok(events) => events,
             Err(error) if is_access_denied_error(&error) => {
                 eprintln!("Skipping inaccessible PR events for {}: {error}", pr_key);
@@ -105,7 +104,9 @@ pub fn run(
 
     for thread in poll_result.threads {
         let pull = match thread.pull.as_ref() {
-            Some(pull) if thread.subject_type == "PullRequest" && tracked.contains(&pull.key()) => pull,
+            Some(pull) if thread.subject_type == "PullRequest" && tracked.contains(&pull.key()) => {
+                pull
+            }
             _ => continue,
         };
         match github_provider.fetch_pr_metadata(pull) {
@@ -118,7 +119,10 @@ pub fn run(
                 );
             }
             Err(error) if is_access_denied_error(&error) => {
-                eprintln!("Skipping inaccessible notification PR {}: {error}", pull.key());
+                eprintln!(
+                    "Skipping inaccessible notification PR {}: {error}",
+                    pull.key()
+                );
                 continue;
             }
             Err(error) => {

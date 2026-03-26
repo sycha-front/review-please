@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{atomic::AtomicBool, Arc, RwLock};
 
 use anyhow::Result;
 use tauri::{ActivationPolicy, Manager};
@@ -60,17 +60,40 @@ pub fn run_tray_app() -> Result<()> {
                 tray,
                 store,
                 runtime_config,
+                is_quitting: AtomicBool::new(false),
             });
             coordinator.refresh_tray()?;
             coordinator.start()?;
             Ok(())
         })
         .build(tauri::generate_context!())?
-        .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
                 let state = app.state::<AppState>();
-                let _ = state.coordinator.stop();
+                state.mark_quitting();
             }
+            tauri::RunEvent::WindowEvent { label, event, .. } => {
+                if label == "main" {
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            let state = app.state::<AppState>();
+                            if !state.is_quitting() {
+                                api.prevent_close();
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.hide();
+                                }
+                            }
+                        }
+                        tauri::WindowEvent::Focused(false) => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.hide();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
         });
     Ok(())
 }

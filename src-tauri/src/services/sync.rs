@@ -16,7 +16,7 @@ use crate::models::SyncState;
 use crate::{
     config::AppConfig,
     db::ReviewStore,
-    models::{TrayState, utc_now_string},
+    models::{utc_now_string, TrayState},
     providers::{GithubProvider, SlackProvider},
     services::{
         github_events::{self, GITHUB_SYNC_SOURCE},
@@ -28,7 +28,6 @@ use crate::{
 
 pub trait SyncCoordinator: Send + Sync {
     fn start(&self) -> Result<()>;
-    fn stop(&self) -> Result<()>;
     fn sync_now(&self) -> Result<()>;
     fn refresh_tray(&self) -> Result<()>;
     fn last_error(&self) -> Option<String>;
@@ -38,7 +37,6 @@ pub trait SyncCoordinator: Send + Sync {
 #[derive(Debug)]
 enum ControlMessage {
     SyncNow,
-    Stop,
 }
 
 #[derive(Debug, Clone)]
@@ -135,7 +133,9 @@ impl LocalSyncCoordinator {
             Err(error) => {
                 let failures = self.record_failure(SLACK_SYNC_SOURCE, &error.to_string())?;
                 if failures == 3 && config.notify_on_errors {
-                    let _ = self.notifications.notify("review-please", "Slack sync failed");
+                    let _ = self
+                        .notifications
+                        .notify("review-please", "Slack sync failed");
                 }
                 Err(error)
             }
@@ -148,10 +148,9 @@ impl LocalSyncCoordinator {
             Ok(outcome) => {
                 if config.notify_on_done {
                     for pr_key in &outcome.completed_pr_keys {
-                        let _ = self.notifications.notify(
-                            "review-please",
-                            &format!("Review completed for {pr_key}"),
-                        );
+                        let _ = self
+                            .notifications
+                            .notify("review-please", &format!("Review completed for {pr_key}"));
                     }
                 }
                 Ok(outcome.completed_request_count)
@@ -159,7 +158,9 @@ impl LocalSyncCoordinator {
             Err(error) => {
                 let failures = self.record_failure(GITHUB_SYNC_SOURCE, &error.to_string())?;
                 if failures == 3 && config.notify_on_errors {
-                    let _ = self.notifications.notify("review-please", "GitHub sync failed");
+                    let _ = self
+                        .notifications
+                        .notify("review-please", "GitHub sync failed");
                 }
                 Err(error)
             }
@@ -183,7 +184,8 @@ impl LocalSyncCoordinator {
                     if let Err(error) = self.run_slack_sync() {
                         last_error = Some(error.to_string());
                     }
-                    next_slack = Instant::now() + Duration::from_secs(config.slack_poll_interval_seconds);
+                    next_slack =
+                        Instant::now() + Duration::from_secs(config.slack_poll_interval_seconds);
                 }
                 if due_github {
                     if let Err(error) = self.run_github_sync() {
@@ -210,7 +212,6 @@ impl LocalSyncCoordinator {
                     next_slack = Instant::now();
                     next_github = Instant::now();
                 }
-                Ok(ControlMessage::Stop) => break,
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
             }
@@ -241,17 +242,6 @@ impl SyncCoordinator for LocalSyncCoordinator {
         let thread_coordinator = coordinator.clone();
         let handle = thread::spawn(move || thread_coordinator.worker_loop(rx));
         *self.worker_handle.lock().expect("worker handle") = Some(handle);
-        Ok(())
-    }
-
-    fn stop(&self) -> Result<()> {
-        self.running.store(false, Ordering::SeqCst);
-        if let Some(tx) = self.worker_tx.lock().expect("worker tx").take() {
-            let _ = tx.send(ControlMessage::Stop);
-        }
-        if let Some(handle) = self.worker_handle.lock().expect("worker handle").take() {
-            handle.join().map_err(|_| anyhow::anyhow!("sync thread panicked"))?;
-        }
         Ok(())
     }
 

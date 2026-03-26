@@ -4,6 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env.release"
 DEFAULT_REPO="sycha-front/pr-review-please"
+TEMP_CONFIG=""
+
+cleanup() {
+  if [[ -n "$TEMP_CONFIG" && -f "$TEMP_CONFIG" ]]; then
+    rm -f "$TEMP_CONFIG"
+  fi
+}
+trap cleanup EXIT
 
 fail() {
   echo "error: $*" >&2
@@ -56,12 +64,37 @@ OUTPUT_DIR="$ROOT_DIR/release/$RELEASE_TAG"
 ARCHIVE_PATH="$ROOT_DIR/src-tauri/target/release/bundle/macos/review-please.app.tar.gz"
 SIGNATURE_PATH="${ARCHIVE_PATH}.sig"
 DMG_PATH="$(find "$ROOT_DIR/src-tauri/target/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' 2>/dev/null | head -n 1 || true)"
+TEMP_CONFIG="$(mktemp /tmp/review-please-tauri-release.XXXXXX.json)"
+
+python3 - "$TEMP_CONFIG" "$TAURI_UPDATER_PUBLIC_KEY" "$TAURI_UPDATER_ENDPOINT" <<'PY'
+import json
+import sys
+
+path, pubkey, endpoint = sys.argv[1:4]
+
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(
+        {
+            "bundle": {
+                "createUpdaterArtifacts": True,
+            },
+            "plugins": {
+                "updater": {
+                    "pubkey": pubkey,
+                    "endpoints": [endpoint],
+                }
+            },
+        },
+        f,
+        ensure_ascii=False,
+    )
+PY
 
 cd "$ROOT_DIR"
 
 yarn install --frozen-lockfile
 yarn build
-yarn tauri build --config src-tauri/tauri.release.conf.json
+yarn tauri build --config "$TEMP_CONFIG"
 
 [[ -f "$ARCHIVE_PATH" ]] || fail "missing updater archive: $ARCHIVE_PATH"
 [[ -f "$SIGNATURE_PATH" ]] || fail "missing updater signature: $SIGNATURE_PATH"

@@ -145,7 +145,9 @@ impl LocalSlackProvider {
             .arg("-H")
             .arg(format!("Authorization: Bearer {token}"));
         for (key, value) in params {
-            command.arg("--data-urlencode").arg(format!("{key}={value}"));
+            command
+                .arg("--data-urlencode")
+                .arg(format!("{key}={value}"));
         }
         let output = command
             .output()
@@ -165,12 +167,19 @@ impl super::SlackProvider for LocalSlackProvider {
     fn search_messages(&self, keyword: &str) -> Result<Vec<SlackMessageRef>> {
         let response: SearchMessagesResponse = self.get(
             "https://slack.com/api/search.messages",
-            &[("query", keyword), ("sort", "timestamp"), ("sort_dir", "desc"), ("count", "100")],
+            &[
+                ("query", keyword),
+                ("sort", "timestamp"),
+                ("sort_dir", "desc"),
+                ("count", "100"),
+            ],
         )?;
         if !response.ok {
             return Err(anyhow!(
                 "Slack search.messages failed: {}",
-                response.error.unwrap_or_else(|| "unknown error".to_string())
+                response
+                    .error
+                    .unwrap_or_else(|| "unknown error".to_string())
             ));
         }
         Ok(response
@@ -195,7 +204,9 @@ impl super::SlackProvider for LocalSlackProvider {
         if !response.ok {
             return Err(anyhow!(
                 "Slack users.info failed: {}",
-                response.error.unwrap_or_else(|| "unknown error".to_string())
+                response
+                    .error
+                    .unwrap_or_else(|| "unknown error".to_string())
             ));
         }
         Ok(response.user.and_then(|user| {
@@ -216,7 +227,9 @@ impl super::SlackProvider for LocalSlackProvider {
         if !response.ok {
             return Err(anyhow!(
                 "Slack chat.getPermalink failed: {}",
-                response.error.unwrap_or_else(|| "unknown error".to_string())
+                response
+                    .error
+                    .unwrap_or_else(|| "unknown error".to_string())
             ));
         }
         Ok(response.permalink)
@@ -308,13 +321,11 @@ mod tests {
 
     #[test]
     fn ignores_missing_deadline() {
-        assert!(
-            extract_deadline(
-                "[soon] review",
-                NaiveDate::from_ymd_opt(2026, 3, 1).expect("date")
-            )
-            .is_none()
-        );
+        assert!(extract_deadline(
+            "[soon] review",
+            NaiveDate::from_ymd_opt(2026, 3, 1).expect("date")
+        )
+        .is_none());
     }
 
     #[test]

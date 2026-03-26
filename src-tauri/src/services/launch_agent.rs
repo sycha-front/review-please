@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -90,7 +89,9 @@ fn disable() -> Result<()> {
 
 fn plist_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow!("HOME directory is not available"))?;
-    Ok(home.join("Library/LaunchAgents").join(format!("{LABEL}.plist")))
+    Ok(home
+        .join("Library/LaunchAgents")
+        .join(format!("{LABEL}.plist")))
 }
 
 fn current_uid() -> Result<String> {

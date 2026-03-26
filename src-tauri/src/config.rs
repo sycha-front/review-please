@@ -122,7 +122,9 @@ pub fn read_dotenv_map() -> Result<HashMap<String, String>> {
     let dotenv_path = std::env::current_dir().ok().and_then(|dir| {
         [
             dir.join(".env"),
-            dir.parent().map(|parent| parent.join(".env")).unwrap_or_default(),
+            dir.parent()
+                .map(|parent| parent.join(".env"))
+                .unwrap_or_default(),
         ]
         .into_iter()
         .find(|path| path.exists())
@@ -130,8 +132,8 @@ pub fn read_dotenv_map() -> Result<HashMap<String, String>> {
     let Some(path) = dotenv_path else {
         return Ok(HashMap::new());
     };
-    let contents = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let contents =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let mut values = HashMap::new();
     for raw_line in contents.lines() {
         let line = raw_line.trim();
@@ -141,7 +143,11 @@ pub fn read_dotenv_map() -> Result<HashMap<String, String>> {
         let Some((key, value)) = line.split_once('=') else {
             continue;
         };
-        let parsed = value.trim().trim_matches('"').trim_matches('\'').to_string();
+        let parsed = value
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
         values.insert(key.trim().to_string(), parsed);
     }
     Ok(values)
@@ -159,7 +165,10 @@ pub fn config_from_dotenv() -> Result<AppConfig> {
     if let Some(value) = values.get("GITHUB_USERNAME") {
         config.github_username = value.clone();
     }
-    if let Some(value) = values.get("LOOKBACK_DAYS").and_then(|value| value.parse::<u64>().ok()) {
+    if let Some(value) = values
+        .get("LOOKBACK_DAYS")
+        .and_then(|value| value.parse::<u64>().ok())
+    {
         config.lookback_days = value;
     }
     Ok(config)

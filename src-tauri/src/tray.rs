@@ -1,4 +1,11 @@
-use std::{path::PathBuf, process::Command, sync::{Arc, RwLock}};
+use std::{
+    path::PathBuf,
+    process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, RwLock,
+    },
+};
 
 use anyhow::{Context, Result};
 use tauri::{
@@ -7,7 +14,9 @@ use tauri::{
     App, AppHandle, Manager, PhysicalPosition, Runtime, Wry,
 };
 
-use crate::{config::AppConfig, db::ReviewStore, models::TrayState, services::sync::SyncCoordinator};
+use crate::{
+    config::AppConfig, db::ReviewStore, models::TrayState, services::sync::SyncCoordinator,
+};
 
 const MENU_PENDING_ID: &str = "pending";
 const MENU_DONE_ID: &str = "done";
@@ -33,14 +42,23 @@ pub struct TrayController {
 impl TrayController {
     pub fn create(app: &mut App<Wry>, data_dir: PathBuf) -> Result<Arc<Self>> {
         let app_handle = app.handle().clone();
-        let pending_item = MenuItem::with_id(app, MENU_PENDING_ID, "Pending: 0", false, None::<&str>)?;
+        let pending_item =
+            MenuItem::with_id(app, MENU_PENDING_ID, "Pending: 0", false, None::<&str>)?;
         let done_item = MenuItem::with_id(app, MENU_DONE_ID, "Done: 0", false, None::<&str>)?;
         let update_item = MenuItem::with_id(app, MENU_UPDATE_ID, "Update: 0", false, None::<&str>)?;
-        let last_sync_item =
-            MenuItem::with_id(app, MENU_LAST_SYNC_ID, "Last Sync: never", false, None::<&str>)?;
-        let status_item = MenuItem::with_id(app, MENU_STATUS_ID, "Status: OK", false, None::<&str>)?;
-        let sync_now_item = MenuItem::with_id(app, MENU_SYNC_NOW_ID, "Sync Now", true, None::<&str>)?;
-        let settings_item = MenuItem::with_id(app, MENU_SETTINGS_ID, "Settings", true, None::<&str>)?;
+        let last_sync_item = MenuItem::with_id(
+            app,
+            MENU_LAST_SYNC_ID,
+            "Last Sync: never",
+            false,
+            None::<&str>,
+        )?;
+        let status_item =
+            MenuItem::with_id(app, MENU_STATUS_ID, "Status: OK", false, None::<&str>)?;
+        let sync_now_item =
+            MenuItem::with_id(app, MENU_SYNC_NOW_ID, "Sync Now", true, None::<&str>)?;
+        let settings_item =
+            MenuItem::with_id(app, MENU_SETTINGS_ID, "Settings", true, None::<&str>)?;
         let show_last_error_item = MenuItem::with_id(
             app,
             MENU_SHOW_LAST_ERROR_ID,
@@ -48,8 +66,13 @@ impl TrayController {
             false,
             None::<&str>,
         )?;
-        let open_data_dir_item =
-            MenuItem::with_id(app, MENU_OPEN_DATA_DIR_ID, "Open Data Directory", true, None::<&str>)?;
+        let open_data_dir_item = MenuItem::with_id(
+            app,
+            MENU_OPEN_DATA_DIR_ID,
+            "Open Data Directory",
+            true,
+            None::<&str>,
+        )?;
         let quit_item = MenuItem::with_id(app, MENU_QUIT_ID, "Quit", true, None::<&str>)?;
         let separator = PredefinedMenuItem::separator(app)?;
         let menu = Menu::with_items(
@@ -78,10 +101,9 @@ impl TrayController {
                 let _ = handle_menu_event(app, &event);
             });
         let tray_app_handle = app_handle.clone();
-        builder = builder
-            .on_tray_icon_event(move |_, event| {
-                let _ = handle_tray_icon_event(&tray_app_handle, &event);
-            });
+        builder = builder.on_tray_icon_event(move |_, event| {
+            let _ = handle_tray_icon_event(&tray_app_handle, &event);
+        });
         if let Some(icon) = app.default_window_icon().cloned() {
             builder = builder.icon(icon);
         }
@@ -126,7 +148,6 @@ impl TrayController {
             .with_context(|| format!("failed to open {}", self.data_dir.display()))?;
         Ok(())
     }
-
 }
 
 fn handle_tray_icon_event<R: Runtime>(app: &AppHandle<R>, event: &TrayIconEvent) -> Result<()> {
@@ -184,6 +205,17 @@ pub struct AppState {
     pub tray: Arc<TrayController>,
     pub store: Arc<dyn ReviewStore>,
     pub runtime_config: Arc<RwLock<AppConfig>>,
+    pub is_quitting: AtomicBool,
+}
+
+impl AppState {
+    pub fn mark_quitting(&self) {
+        self.is_quitting.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_quitting(&self) -> bool {
+        self.is_quitting.load(Ordering::SeqCst)
+    }
 }
 
 fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Result<()> {
@@ -209,7 +241,7 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Resul
             state.tray.open_data_dir()?;
         }
         MENU_QUIT_ID => {
-            let _ = state.coordinator.stop();
+            state.mark_quitting();
             app.exit(0);
         }
         _ => {}

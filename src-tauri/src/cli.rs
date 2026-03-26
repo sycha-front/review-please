@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{anyhow, Result};
 
@@ -175,13 +175,24 @@ fn run_doctor() -> Result<()> {
     let github_token = credentials.get(GITHUB_TOKEN_ACCOUNT)?.is_some();
     println!("config_path={}", config::config_path()?.display());
     println!("data_dir={}", config::data_dir()?.display());
-    println!("slack_keyword_set={}", !config.slack_mention_keyword.trim().is_empty());
+    println!("slack_keyword_set={}", !config.slack_mention_keywords().is_empty());
     println!("slack_token_set={slack_token}");
     println!("github_token_set={github_token}");
 
-    if slack_token && !config.slack_mention_keyword.trim().is_empty() {
+    if slack_token && !config.slack_mention_keywords().is_empty() {
         let slack = slack_provider(credentials.clone());
-        let count = slack.search_messages(&config.slack_mention_keyword)?.len();
+        let mut seen_messages = HashSet::new();
+        for keyword in config.slack_mention_keywords() {
+            for message in slack.search_messages(&keyword)? {
+                seen_messages.insert(format!(
+                    "{}:{}:{}",
+                    message.channel_id.as_deref().unwrap_or_default(),
+                    message.user_id.as_str(),
+                    message.ts.as_str()
+                ));
+            }
+        }
+        let count = seen_messages.len();
         println!("slack_search_ok=true");
         println!("slack_search_count={count}");
     }

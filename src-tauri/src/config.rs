@@ -78,10 +78,19 @@ impl AppConfig {
     }
 
     pub fn validate(&self) -> Result<()> {
-        if self.slack_mention_keyword.trim().is_empty() {
+        if self.slack_mention_keywords().is_empty() {
             return Err(anyhow!("slack_mention_keyword is required"));
         }
         Ok(())
+    }
+
+    pub fn slack_mention_keywords(&self) -> Vec<String> {
+        self.slack_mention_keyword
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect()
     }
 }
 

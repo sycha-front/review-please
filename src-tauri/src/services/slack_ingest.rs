@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
 use chrono::{Duration, Local};
@@ -32,15 +32,40 @@ pub fn run(
     let sync_state = store.get_sync_state(SLACK_SYNC_SOURCE)?;
     let last_seen = sync_state.last_seen_slack_ts.as_deref();
     let mut outcome = SlackSyncOutcome::default();
-    let query = if config.lookback_days > 0 {
-        let after = (Local::now() - Duration::days(config.lookback_days as i64))
-            .format("%Y-%m-%d")
-            .to_string();
-        format!("{} after:{}", config.slack_mention_keyword, after)
+    let keywords = config.slack_mention_keywords();
+    let after_clause = if config.lookback_days > 0 {
+        Some(
+            (Local::now() - Duration::days(config.lookback_days as i64))
+                .format("%Y-%m-%d")
+                .to_string(),
+        )
     } else {
-        config.slack_mention_keyword.clone()
+        None
     };
-    let mut messages = slack_provider.search_messages(&query)?;
+    let mut seen_messages = HashSet::new();
+    let mut messages = Vec::new();
+
+    for keyword in keywords {
+        let query = if let Some(after) = &after_clause {
+            format!("{keyword} after:{after}")
+        } else {
+            keyword
+        };
+
+        for message in slack_provider.search_messages(&query)? {
+            let dedupe_key = format!(
+                "{}:{}:{}",
+                message.channel_id.as_deref().unwrap_or_default(),
+                message.user_id.as_str(),
+                message.ts.as_str()
+            );
+
+            if seen_messages.insert(dedupe_key) {
+                messages.push(message);
+            }
+        }
+    }
+
     messages.sort_by(|left, right| left.ts.partial_cmp(&right.ts).unwrap_or(std::cmp::Ordering::Equal));
 
     for message in messages {

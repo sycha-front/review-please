@@ -1,6 +1,6 @@
-# # review-please
+# review-please
 
-Slack 메시지를 기반으로 PR 리뷰 요청을 추적하는 Tauri 앱.
+Slack 멘션을 기반 PR 리뷰 요청을 추적하는 Tauri 앱.
 
 ![](./assets/screenshot.png)
 

@@ -45,8 +45,17 @@ TAURI_VERSION="$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$ROOT_DIR/src-tauri/ta
 [[ "$CARGO_VERSION" == "$TAURI_VERSION" ]] || fail "src-tauri/Cargo.toml version ($CARGO_VERSION) and src-tauri/tauri.conf.json version ($TAURI_VERSION) must match"
 
 VERSION="$CARGO_VERSION"
-RELEASE_TAG="${RELEASE_TAG:-v$VERSION}"
+DEFAULT_RELEASE_TAG="$(git -C "$ROOT_DIR" describe --tags --exact-match 2>/dev/null || true)"
+if [[ -z "$DEFAULT_RELEASE_TAG" ]]; then
+  DEFAULT_RELEASE_TAG="v$VERSION"
+fi
+RELEASE_TAG="${RELEASE_TAG:-$DEFAULT_RELEASE_TAG}"
 PUBLISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+if [[ "$RELEASE_TAG" != "v$VERSION" ]]; then
+  echo "warning: RELEASE_TAG ($RELEASE_TAG) does not exactly match app version v$VERSION" >&2
+  echo "warning: prerelease면 src-tauri/Cargo.toml 과 src-tauri/tauri.conf.json 버전도 같은 suffix로 맞추는 걸 권장합니다." >&2
+fi
 
 case "$(uname -m)" in
   arm64|aarch64)

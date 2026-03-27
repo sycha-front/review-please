@@ -19,7 +19,9 @@ type UseReleaseStatusResult = {
 export function useReleaseStatus(
   pollIntervalMs = 1000 * 60 * 10,
 ): UseReleaseStatusResult {
-  const [releaseStatus, setReleaseStatus] = useState<ReleaseStatus | null>(null);
+  const [releaseStatus, setReleaseStatus] = useState<ReleaseStatus | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const isMountedRef = useRef(false);
 
@@ -33,7 +35,6 @@ export function useReleaseStatus(
       if (!isMountedRef.current) {
         return;
       }
-      console.log("[review-please] release status", next);
       startTransition(() => {
         setReleaseStatus(next);
       });

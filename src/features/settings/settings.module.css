@@ -38,3 +38,11 @@
 .input:focus {
   border: 1px solid var(--gray-300);
 }
+
+.saveButton {
+  & > p {
+    margin: 0 0 4px;
+    text-align: center;
+    color: var(--gray-600);
+  }
+}

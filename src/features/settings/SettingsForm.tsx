@@ -13,7 +13,7 @@ import {
 type SettingsFormProps = {
   form: SettingsPayload;
   isSaving: boolean;
-  saveMessage: string | null;
+  isDirty: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: <K extends keyof SettingsPayload>(
     key: K,
@@ -24,9 +24,13 @@ type SettingsFormProps = {
 export function SettingsForm({
   form,
   isSaving,
+  isDirty,
   onSubmit,
   onFieldChange,
 }: SettingsFormProps) {
+  const isSaveDisabled = isSaving || !isDirty;
+  const saveLabel = isSaving ? "저장 중..." : "설정 저장";
+
   return (
     <form onSubmit={onSubmit} className={s.form}>
       <H1>설정</H1>
@@ -41,43 +45,41 @@ export function SettingsForm({
       <SettingsTextField
         label="Slack 유저명"
         value={form.slackUsername}
+        description="내 이벤트 식별에 사용됩니다."
         onChange={(value) => onFieldChange("slackUsername", value)}
       />
 
       <SettingsTextField
         label="GitHub 유저명"
         value={form.githubUsername}
+        description="내 이벤트 식별에 사용됩니다."
         onChange={(value) => onFieldChange("githubUsername", value)}
-      />
-
-      <SettingsTextField
-        label="로컬 repo 경로"
-        value={form.repoPath}
-        onChange={(value) => onFieldChange("repoPath", value)}
       />
 
       <SettingsTextField
         label="Slack 유저 토큰"
         type="password"
+        description="개발자에게 문의주세요."
         value={form.slackToken}
         onChange={(value) => onFieldChange("slackToken", value)}
       />
 
       <SettingsTextField
-        label="GitHub 토큰"
+        label="GitHub 토큰 (classic)"
         type="password"
+        description="필요 권한: notification, repo"
         value={form.githubToken}
         onChange={(value) => onFieldChange("githubToken", value)}
       />
 
       <div className={s.doubleColumn}>
         <SettingsNumberField
-          label="Lookback Days"
+          label="조회 가능한 이전 일수(일)"
           value={form.lookbackDays}
           onChange={(value) => onFieldChange("lookbackDays", value)}
         />
         <SettingsNumberField
-          label="Done Menu Limit"
+          label="완료된 PR 표시 갯수"
           value={form.doneMenuLimit}
           onChange={(value) => onFieldChange("doneMenuLimit", value)}
         />
@@ -112,22 +114,29 @@ export function SettingsForm({
         checked={form.notifyOnErrors}
         onChange={(value) => onFieldChange("notifyOnErrors", value)}
       />
+      {/* <SettingsCheckboxField
+        label="X를 누를 때만 숨기기"
+        checked={form.hideOnlyOnClose}
+        onChange={(value) => onFieldChange("hideOnlyOnClose", value)}
+      />
       <SettingsCheckboxField
         label="로그인 시 자동 실행"
         checked={form.launchAtLogin}
         onChange={(value) => onFieldChange("launchAtLogin", value)}
-      />
-      <P3>설정은 로컬에만 저장됩니다.</P3>
-      <Button
-        type="submit"
-        disabled={isSaving}
-        style={{
-          cursor: isSaving ? "wait" : "pointer",
-          opacity: isSaving ? 0.7 : 1,
-        }}
-      >
-        <H4>{isSaving ? "저장 중..." : "설정 저장"}</H4>
-      </Button>
+      /> */}
+      <div className={s.saveButton}>
+        <P3>설정은 로컬에만 저장됩니다.</P3>
+        <Button
+          type="submit"
+          disabled={isSaveDisabled}
+          style={{
+            cursor: isSaving ? "wait" : isDirty ? "pointer" : "default",
+            opacity: isSaveDisabled ? 0.7 : 1,
+          }}
+        >
+          <H4>{saveLabel}</H4>
+        </Button>
+      </div>
     </form>
   );
 }

@@ -28,7 +28,7 @@ export function useSettings(): UseSettingsResult {
         if (!isMounted) {
           return;
         }
-        console.log("[review-please] settings", next);
+        // console.log("[review-please] settings", next);
         startTransition(() => {
           setSettings(next);
           setError(null);
@@ -63,7 +63,7 @@ export function useSettings(): UseSettingsResult {
       const saved = await invoke<SettingsPayload>("save_settings", {
         payload: next,
       });
-      console.log("[review-please] saved settings", saved);
+      // console.log("[review-please] saved settings", saved);
       startTransition(() => {
         setSettings(saved);
         setError(null);

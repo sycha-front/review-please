@@ -16,7 +16,6 @@ pub struct AppConfig {
     pub slack_mention_keyword: String,
     pub slack_username: String,
     pub github_username: String,
-    pub repo_path: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
@@ -24,6 +23,7 @@ pub struct AppConfig {
     pub notify_on_new_pending: bool,
     pub notify_on_done: bool,
     pub notify_on_errors: bool,
+    pub hide_only_on_close: bool,
     pub launch_at_login: bool,
 }
 
@@ -33,7 +33,6 @@ impl Default for AppConfig {
             slack_mention_keyword: String::new(),
             slack_username: String::new(),
             github_username: String::new(),
-            repo_path: detect_default_repo_path(),
             lookback_days: 7,
             slack_poll_interval_seconds: 120,
             github_min_poll_interval_seconds: 60,
@@ -41,6 +40,7 @@ impl Default for AppConfig {
             notify_on_new_pending: true,
             notify_on_done: true,
             notify_on_errors: true,
+            hide_only_on_close: false,
             launch_at_login: false,
         }
     }
@@ -92,22 +92,6 @@ impl AppConfig {
             .map(str::to_string)
             .collect()
     }
-}
-
-pub fn detect_default_repo_path() -> String {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let Some(repo_root) = manifest_dir.parent() else {
-        return String::new();
-    };
-
-    let has_repo_markers = repo_root.join("package.json").exists()
-        && repo_root.join("scripts/update-app.sh").exists()
-        && repo_root.join("src-tauri").exists();
-    if !has_repo_markers {
-        return String::new();
-    }
-
-    repo_root.display().to_string()
 }
 
 pub fn ensure_data_dir() -> Result<PathBuf> {

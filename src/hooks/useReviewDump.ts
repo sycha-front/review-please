@@ -108,7 +108,10 @@ export type UseReviewDumpResult = {
   error: string | null;
   isLoading: boolean;
   refresh: () => Promise<void>;
-  updateDeadline: (reviewRequestId: string, deadlineDate: string) => Promise<void>;
+  updateDeadline: (
+    reviewRequestId: string,
+    deadlineDate: string,
+  ) => Promise<void>;
   updateStatus: (reviewRequestId: string, status: boolean) => Promise<void>;
   markUpdateRead: (eventIds: string[]) => Promise<void>;
   markAllUpdateRead: () => Promise<void>;
@@ -164,10 +167,7 @@ export function useReviewDump(pollIntervalMs = 10000): UseReviewDumpResult {
     await refresh();
   }
 
-  async function updateStatus(
-    reviewRequestId: string,
-    status: boolean,
-  ) {
+  async function updateStatus(reviewRequestId: string, status: boolean) {
     await invoke("update_review_status", {
       payload: {
         reviewRequestId,

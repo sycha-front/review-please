@@ -85,8 +85,16 @@ pub fn run_tray_app() -> Result<()> {
                             }
                         }
                         tauri::WindowEvent::Focused(false) => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.hide();
+                            let state = app.state::<AppState>();
+                            let should_hide_on_focus_loss = state
+                                .runtime_config
+                                .read()
+                                .map(|config| !config.hide_only_on_close)
+                                .unwrap_or(true);
+                            if should_hide_on_focus_loss {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.hide();
+                                }
                             }
                         }
                         _ => {}

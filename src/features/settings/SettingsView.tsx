@@ -7,6 +7,24 @@ import { SettingsForm } from "./SettingsForm";
 import { errorTextStyle, loadingTextStyle } from "./styles";
 
 import i from "../../styles/index.module.css";
+function areSettingsEqual(left: SettingsPayload, right: SettingsPayload) {
+  return (
+    left.slackMentionKeyword === right.slackMentionKeyword &&
+    left.slackUsername === right.slackUsername &&
+    left.githubUsername === right.githubUsername &&
+    left.lookbackDays === right.lookbackDays &&
+    left.slackPollIntervalSeconds === right.slackPollIntervalSeconds &&
+    left.githubMinPollIntervalSeconds === right.githubMinPollIntervalSeconds &&
+    left.doneMenuLimit === right.doneMenuLimit &&
+    left.notifyOnNewPending === right.notifyOnNewPending &&
+    left.notifyOnDone === right.notifyOnDone &&
+    left.notifyOnErrors === right.notifyOnErrors &&
+    left.hideOnlyOnClose === right.hideOnlyOnClose &&
+    left.launchAtLogin === right.launchAtLogin &&
+    left.slackToken === right.slackToken &&
+    left.githubToken === right.githubToken
+  );
+}
 
 export function SettingsView() {
   const {
@@ -17,25 +35,12 @@ export function SettingsView() {
     saveSettings,
   } = useSettings();
   const [form, setForm] = useState<SettingsPayload | null>(null);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
       setForm(settings);
     }
   }, [settings]);
-
-  useEffect(() => {
-    if (!saveMessage) {
-      return undefined;
-    }
-    const timeoutId = window.setTimeout(() => {
-      setSaveMessage(null);
-    }, 1500);
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [saveMessage]);
 
   function updateField<K extends keyof SettingsPayload>(
     key: K,
@@ -46,12 +51,13 @@ export function SettingsView() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form) {
+    if (!form || !settings || areSettingsEqual(form, settings)) {
       return;
     }
     await saveSettings(form);
-    setSaveMessage("Saved");
   }
+
+  const isDirty = !!(form && settings && !areSettingsEqual(form, settings));
 
   return (
     <section className={i.panel} id="settings">
@@ -67,7 +73,7 @@ export function SettingsView() {
         <SettingsForm
           form={form}
           isSaving={isSaving}
-          saveMessage={saveMessage}
+          isDirty={isDirty}
           onSubmit={handleSubmit}
           onFieldChange={updateField}
         />

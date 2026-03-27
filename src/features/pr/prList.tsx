@@ -68,7 +68,7 @@ export default function PrList({
   });
 
   return (
-    <div className={cn(isVisible ? s.visible : s.hidden)}>
+    <article className={cn(s.field, isVisible ? s.visible : s.hidden)}>
       <Controls sorted={sorted}>
         <Search value={search.query} onChange={search.setQuery} />
       </Controls>
@@ -86,26 +86,25 @@ export default function PrList({
           <PrItem key={item.id} item={item} />
         ))}
         {paginated.visibleItems.length === 0 && "없어용"}
-        {paginated.hasMore && (
-          <Button className={s.loadMoreButton} onClick={paginated.loadMore}>
-            <P3>더 보기</P3>
-          </Button>
-        )}
       </ul>
-    </div>
+      {paginated.hasMore && (
+        <Button className={s.loadMoreButton} onClick={paginated.loadMore}>
+          <P3>더 보기</P3>
+        </Button>
+      )}
+    </article>
   );
 }
 
 export function PrItem({ item }: Props) {
   const { updateStatus } = useReviewActions();
+  const prLink = getGithubProps(item.pr_url);
   const repoLink = getGithubProps(`${item.repo_owner}/${item.repo_name}`);
 
   return (
     <li className={cn(s.item, item.status ? s.read : "")}>
       <H4 className={s.title}>
-        <a href={item.pr_url} target="_blank" rel="noreferrer">
-          {item.pr_title}
-        </a>
+        <a {...prLink}>{item.pr_title}</a>
       </H4>
       <P3 className={s.desc}>
         {item.slack_text.replace(bracketRegex, "").split("\n")[0]}

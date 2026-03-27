@@ -114,12 +114,12 @@ export function SettingsForm({
         checked={form.notifyOnErrors}
         onChange={(value) => onFieldChange("notifyOnErrors", value)}
       />
-      {/* <SettingsCheckboxField
+      <SettingsCheckboxField
         label="X를 누를 때만 숨기기"
         checked={form.hideOnlyOnClose}
         onChange={(value) => onFieldChange("hideOnlyOnClose", value)}
       />
-      <SettingsCheckboxField
+      {/* <SettingsCheckboxField
         label="로그인 시 자동 실행"
         checked={form.launchAtLogin}
         onChange={(value) => onFieldChange("launchAtLogin", value)}

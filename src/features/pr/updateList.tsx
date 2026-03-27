@@ -45,7 +45,7 @@ export default function UpdateList({
   });
 
   return (
-    <div className={cn(isVisible ? s.visible : s.hidden)}>
+    <article className={cn(s.field, isVisible ? s.visible : s.hidden)}>
       <Controls sorted={sorted}>
         <Button
           disabled={unreadCount === 0}
@@ -72,13 +72,13 @@ export default function UpdateList({
           />
         ))}
         {paginated.visibleItems.length === 0 && "없어용"}
-        {paginated.hasMore && (
-          <Button className={s.loadMoreButton} onClick={paginated.loadMore}>
-            <P3>더 보기</P3>
-          </Button>
-        )}
       </ul>
-    </div>
+      {paginated.hasMore && (
+        <Button className={s.loadMoreButton} onClick={paginated.loadMore}>
+          <P3>더 보기</P3>
+        </Button>
+      )}
+    </article>
   );
 }
 

@@ -1,8 +1,8 @@
 # review-please
 
-Slack 멘션을 기반 PR 리뷰 요청을 추적하는 Tauri 앱.
+Slack 멘션을 기반으로 PR 리뷰 요청과 알림을 추적하는 MacOS 트레이 앱.
 
-![](./assets/screenshot.png)
+![](./assets/Group_1707481899.png)
 
 ## 주요 기능
 

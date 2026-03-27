@@ -27,7 +27,6 @@ export default function DateInput({ item }: Props) {
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     } finally {
-      console.log("saved");
       setIsSavingDeadline(false);
     }
   }

@@ -40,12 +40,9 @@ export default function VersionBanner({
   return (
     <div className={s.versionBanner}>
       <div>
-        <P3 className={s.versionTitle}>
-          새 버전 {releaseStatus.latestVersion} 이 있습니다.
-        </P3>
-        <P3 className={s.versionDesc}>
-          현재 버전 {releaseStatus.currentVersion} 에서 업데이트할 수 있어요.
-        </P3>
+        {/* <P3 className={s.versionTitle}>
+          현재 버전: v{releaseStatus.currentVersion}
+        </P3> */}
         {updateError && <p className={s.versionError}>{updateError}</p>}
       </div>
       <div className={s.versionActions}>
@@ -55,7 +52,9 @@ export default function VersionBanner({
           onClick={() => void onUpdate()}
           type="button"
         >
-          {isUpdating ? "업데이트 준비 중..." : "원클릭 업데이트"}
+          {isUpdating
+            ? "업데이트 준비 중..."
+            : `v${releaseStatus.latestVersion} 업데이트`}
         </Button>
         {releaseStatus.latestReleaseUrl && (
           <Button

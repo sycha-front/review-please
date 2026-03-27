@@ -28,6 +28,8 @@
   width: 28px;
   background-color: transparent;
   border: none;
+  transition: background-color 0.2s var(--cubic);
+  border-radius: 999px;
 
   & svg {
     padding: 4px;
@@ -35,4 +37,8 @@
     width: 28px;
     box-sizing: border-box;
   }
+}
+
+.settingButton:hover {
+  background-color: var(--gray-100);
 }

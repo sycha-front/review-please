@@ -15,7 +15,6 @@ type Props = {
 };
 
 export default function Controls({ sorted, children }: Props) {
-  console.log(sorted);
   return (
     <div className={s.controls}>
       <div className={s.group} role="group" aria-label="정렬 기준">

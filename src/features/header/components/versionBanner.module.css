@@ -1,20 +1,24 @@
 .versionBanner {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: 16px;
-  padding: 8px;
-  border: 1px solid var(--gray-200);
+  /* border: 1px solid var(--gray-200);
   border-radius: var(--border-radius);
-  background: #f8fafc;
+  background: #f8fafc; */
+}
+
+.versionTitle {
+  line-height: 1.2;
+  color: var(--gray-600);
 }
 
 .versionButton {
   width: auto;
   min-width: 92px;
-  padding: 8px 12px;
   border-radius: 999px;
   font-size: 12px;
+  line-height: 1.2;
 }
 
 .versionActions {

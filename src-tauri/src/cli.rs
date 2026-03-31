@@ -227,6 +227,7 @@ fn run_dump(format: &str) -> Result<()> {
         "OK",
         store.last_error_message()?,
         &config.github_username,
+        &config.slack_username,
     )?;
     println!("{}", serde_json::to_string_pretty(&dump)?);
     Ok(())

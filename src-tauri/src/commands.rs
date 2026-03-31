@@ -92,6 +92,7 @@ pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String>
             &status,
             last_error,
             &done_menu_limit.github_username,
+            &done_menu_limit.slack_username,
         )
         .map_err(|error| error.to_string())
 }

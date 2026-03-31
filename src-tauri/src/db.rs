@@ -60,12 +60,14 @@ pub trait ReviewStore: Send + Sync {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_username: &str,
     ) -> Result<ReviewDump>;
     fn tray_state(
         &self,
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_username: &str,
     ) -> Result<TrayState>;
     fn last_error_message(&self) -> Result<Option<String>>;
 }
@@ -185,6 +187,7 @@ impl SqliteStore {
         &self,
         connection: &Connection,
         github_username: &str,
+        slack_username: &str,
     ) -> Result<(
         Vec<ReviewRequest>,
         Vec<ReviewRequest>,
@@ -219,7 +222,12 @@ impl SqliteStore {
                 .cloned()
                 .collect::<Vec<_>>();
 
-            match classify_review_request(&request, &request_events, github_username) {
+            match classify_review_request(
+                &request,
+                &request_events,
+                github_username,
+                slack_username,
+            ) {
                 Some(ReviewStatus::Pending) => {
                     request.status = ReviewStatus::Pending.as_str().to_string();
                     pending.push(request);
@@ -1019,10 +1027,11 @@ impl ReviewStore for SqliteStore {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_username: &str,
     ) -> Result<ReviewDump> {
         let connection = self.connection()?;
         let (pending, mut done, update, all_events) =
-            self.categorized_requests(&connection, github_username)?;
+            self.categorized_requests(&connection, github_username, slack_username)?;
         let all_requests = self.fetch_review_requests(&connection)?;
         let update_feed = self.build_update_feed(&all_requests, &all_events, github_username);
         let slack_sync = integration_status_from_sync_state(
@@ -1076,9 +1085,11 @@ impl ReviewStore for SqliteStore {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_username: &str,
     ) -> Result<TrayState> {
         let connection = self.connection()?;
-        let (pending, done, update, _) = self.categorized_requests(&connection, github_username)?;
+        let (pending, done, update, _) =
+            self.categorized_requests(&connection, github_username, slack_username)?;
         Ok(TrayState {
             pending_count: pending.len() as u64,
             done_count: done.len() as u64,

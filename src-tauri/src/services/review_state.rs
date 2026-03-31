@@ -2,6 +2,12 @@ use chrono::{Local, NaiveDate};
 
 use crate::models::{EventKind, GithubEvent, ReviewRequest, ReviewStatus};
 
+pub fn matches_slack_username(candidate: &str, slack_username: &str) -> bool {
+    let candidate = normalize_slack_username(candidate);
+    let slack_username = normalize_slack_username(slack_username);
+    !candidate.is_empty() && candidate == slack_username
+}
+
 pub fn should_mark_done(event_kind: &str, actor_is_me: bool) -> bool {
     actor_is_me && event_kind == EventKind::Approved.as_str()
 }
@@ -10,7 +16,12 @@ pub fn classify_review_request(
     request: &ReviewRequest,
     events: &[GithubEvent],
     github_username: &str,
+    slack_username: &str,
 ) -> Option<ReviewStatus> {
+    if matches_slack_username(&request.requester_display_name, slack_username) {
+        return None;
+    }
+
     let is_my_pr = request
         .pr_author_login
         .as_deref()
@@ -47,6 +58,16 @@ fn parse_deadline(value: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").ok()
 }
 
+fn normalize_slack_username(value: &str) -> String {
+    value
+        .trim()
+        .trim_start_matches('@')
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
 fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {
     if matches!(
         event.notification_reason.as_str(),
@@ -69,7 +90,7 @@ fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {
 mod tests {
     use crate::models::{GithubEvent, GithubPullRef, ReviewRequest};
 
-    use super::{classify_review_request, should_mark_done};
+    use super::{classify_review_request, matches_slack_username, should_mark_done};
 
     #[test]
     fn marks_done_only_for_my_approval() {
@@ -117,9 +138,44 @@ mod tests {
         }];
 
         assert_eq!(
-            classify_review_request(&request, &events, "sycha-front")
+            classify_review_request(&request, &events, "sycha-front", "review-bot")
                 .map(|value| value.as_str().to_string()),
             Some("update".to_string())
+        );
+    }
+
+    #[test]
+    fn matches_slack_username_ignores_at_sign_and_spacing() {
+        assert!(matches_slack_username("차수연", "@차수연"));
+        assert!(matches_slack_username("  Chasuyeon ", "chasuyeon"));
+        assert!(matches_slack_username("차수연", " 차수연 "));
+        assert!(!matches_slack_username("차수연", "최진실"));
+    }
+
+    #[test]
+    fn excludes_requests_sent_by_me_on_slack() {
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 1,
+        };
+        let request = ReviewRequest::new(
+            &pull,
+            "PR".to_string(),
+            Some("other-user".to_string()),
+            None,
+            "U123".to_string(),
+            "차수연".to_string(),
+            None,
+            "1".to_string(),
+            None,
+            "hello".to_string(),
+            None,
+        );
+
+        assert_eq!(
+            classify_review_request(&request, &[], "sycha-front", "@차수연"),
+            None
         );
     }
 }

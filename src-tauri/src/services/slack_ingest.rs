@@ -8,6 +8,7 @@ use crate::{
     db::ReviewStore,
     models::{newer_ts, utc_now_string, ReviewRequest, SyncState},
     providers::{GithubProvider, SlackProvider},
+    services::review_state::matches_slack_username,
 };
 
 use crate::providers::{
@@ -97,6 +98,9 @@ pub fn run(
                 message.user_id.clone()
             }
         };
+        if matches_slack_username(&display_name, &config.slack_username) {
+            continue;
+        }
         let permalink = match message.channel_id.as_deref() {
             Some(channel_id) => match slack_provider.fetch_permalink(channel_id, &message.ts) {
                 Ok(value) => value,

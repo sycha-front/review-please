@@ -10,32 +10,57 @@ export type UseSettingsResult = {
   error: string | null;
   isLoading: boolean;
   isSaving: boolean;
+  isSlackConnecting: boolean;
   saveSettings: (next: SettingsPayload) => Promise<SettingsPayload>;
+  connectSlack: () => Promise<void>;
+  disconnectSlack: () => Promise<void>;
 };
+
+type StartSlackOauthResponse = {
+  sessionId: string;
+  sessionSecret: string;
+  expiresAt: string;
+};
+
+type PollSlackOauthResponse = {
+  status: "pending" | "completed" | "expired" | "failed";
+  error: string | null;
+  settings: SettingsPayload | null;
+};
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 export function useSettings(): UseSettingsResult {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSlackConnecting, setIsSlackConnecting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadSettings() {
+    async function loadSettings(showLoading = true) {
+      if (showLoading && isMounted) {
+        setIsLoading(true);
+      }
       try {
         const next = await invoke<SettingsPayload>("get_settings");
         if (!isMounted) {
-          return;
+          return null;
         }
-        // console.log("[review-please] settings", next);
         startTransition(() => {
           setSettings(next);
           setError(null);
         });
+        return next;
       } catch (loadError) {
         if (!isMounted) {
-          return;
+          return null;
         }
         const message =
           loadError instanceof Error ? loadError.message : String(loadError);
@@ -43,8 +68,9 @@ export function useSettings(): UseSettingsResult {
         startTransition(() => {
           setError(message);
         });
+        return null;
       } finally {
-        if (isMounted) {
+        if (showLoading && isMounted) {
           setIsLoading(false);
         }
       }
@@ -82,11 +108,88 @@ export function useSettings(): UseSettingsResult {
     }
   }
 
+  async function connectSlack() {
+    setIsSlackConnecting(true);
+    try {
+      startTransition(() => {
+        setError(null);
+      });
+      const started = await invoke<StartSlackOauthResponse>("start_slack_oauth");
+      const expiresAt = Date.parse(started.expiresAt);
+
+      while (Date.now() < expiresAt + 5000) {
+        await wait(1500);
+        const polled = await invoke<PollSlackOauthResponse>("poll_slack_oauth", {
+          payload: {
+            sessionId: started.sessionId,
+            sessionSecret: started.sessionSecret,
+          },
+        });
+
+        if (polled.status === "pending") {
+          continue;
+        }
+
+        if (polled.status === "completed" && polled.settings) {
+          startTransition(() => {
+            setSettings(polled.settings);
+            setError(null);
+          });
+          return;
+        }
+
+        throw new Error(
+          polled.error ?? "Slack 연결에 실패했어요. 다시 시도해주세요.",
+        );
+      }
+
+      throw new Error("Slack 연결 시간이 만료되었어요. 다시 시도해주세요.");
+    } catch (connectError) {
+      const message =
+        connectError instanceof Error
+          ? connectError.message
+          : String(connectError);
+      console.error("[review-please] failed to connect slack", message);
+      startTransition(() => {
+        setError(message);
+      });
+      throw connectError;
+    } finally {
+      setIsSlackConnecting(false);
+    }
+  }
+
+  async function disconnectSlack() {
+    setIsSlackConnecting(true);
+    try {
+      const next = await invoke<SettingsPayload>("disconnect_slack_oauth");
+      startTransition(() => {
+        setSettings(next);
+        setError(null);
+      });
+    } catch (disconnectError) {
+      const message =
+        disconnectError instanceof Error
+          ? disconnectError.message
+          : String(disconnectError);
+      console.error("[review-please] failed to disconnect slack", message);
+      startTransition(() => {
+        setError(message);
+      });
+      throw disconnectError;
+    } finally {
+      setIsSlackConnecting(false);
+    }
+  }
+
   return {
     settings,
     error,
     isLoading,
     isSaving,
+    isSlackConnecting,
     saveSettings,
+    connectSlack,
+    disconnectSlack,
   };
 }

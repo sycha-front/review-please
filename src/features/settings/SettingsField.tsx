@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import { P3 } from "../../common/typo";
 import s from "./settings.module.css";
 
@@ -7,6 +8,7 @@ type TextFieldProps = {
   type?: "text" | "password";
   placeholder?: string;
   description?: string;
+  children?: ReactNode;
   onChange: (value: string) => void;
 };
 
@@ -16,6 +18,7 @@ export function SettingsTextField({
   type = "text",
   placeholder,
   description,
+  children,
   onChange,
 }: TextFieldProps) {
   return (
@@ -29,6 +32,7 @@ export function SettingsTextField({
         onChange={(event) => onChange(event.currentTarget.value)}
       />
       {description && <span className={s.helperText}>{description}</span>}
+      {children}
     </label>
   );
 }

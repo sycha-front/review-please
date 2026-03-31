@@ -104,6 +104,7 @@ impl LocalSyncCoordinator {
             &status.status,
             status.last_error,
             &config.github_username,
+            &config.slack_user_id,
             &config.slack_username,
         )
     }

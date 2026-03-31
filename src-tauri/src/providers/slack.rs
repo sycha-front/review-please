@@ -6,7 +6,7 @@ use regex::Regex;
 use serde::Deserialize;
 
 use crate::{
-    keychain::{CredentialStore, SLACK_TOKEN_ACCOUNT},
+    keychain::{effective_slack_token, CredentialStore},
     models::{GithubPullRef, SlackMessageRef},
 };
 
@@ -125,9 +125,9 @@ impl LocalSlackProvider {
     }
 
     fn token(&self) -> Result<String> {
-        self.credentials
-            .get(SLACK_TOKEN_ACCOUNT)?
-            .ok_or_else(|| anyhow!("missing Slack user token; run `review-please setup`"))
+        effective_slack_token(self.credentials.as_ref())?.ok_or_else(|| {
+            anyhow!("missing Slack user token; connect Slack or run `review-please setup`")
+        })
     }
 
     fn get<T: for<'de> Deserialize<'de>>(

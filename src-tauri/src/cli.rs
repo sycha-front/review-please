@@ -6,7 +6,8 @@ use crate::{
     config::{self, AppConfig},
     db::{ReviewStore, SqliteStore},
     keychain::{
-        CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT,
+        effective_slack_token, CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT,
+        SLACK_ACCESS_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT,
     },
     providers::{
         github::LocalGithubProvider, slack::LocalSlackProvider, GithubProvider, SlackProvider,
@@ -176,7 +177,9 @@ fn run_setup(args: SetupArgs) -> Result<()> {
 fn run_doctor() -> Result<()> {
     let config = AppConfig::load_or_default()?;
     let credentials = credentials();
-    let slack_token = credentials.get(SLACK_TOKEN_ACCOUNT)?.is_some();
+    let slack_token = effective_slack_token(credentials.as_ref())?.is_some();
+    let slack_oauth_token = credentials.get(SLACK_ACCESS_TOKEN_ACCOUNT)?.is_some();
+    let slack_manual_token = credentials.get(SLACK_TOKEN_ACCOUNT)?.is_some();
     let github_token = credentials.get(GITHUB_TOKEN_ACCOUNT)?.is_some();
     println!("config_path={}", config::config_path()?.display());
     println!("data_dir={}", config::data_dir()?.display());
@@ -185,6 +188,8 @@ fn run_doctor() -> Result<()> {
         !config.slack_mention_keywords().is_empty()
     );
     println!("slack_token_set={slack_token}");
+    println!("slack_oauth_token_set={slack_oauth_token}");
+    println!("slack_manual_token_set={slack_manual_token}");
     println!("github_token_set={github_token}");
 
     if slack_token && !config.slack_mention_keywords().is_empty() {
@@ -227,6 +232,7 @@ fn run_dump(format: &str) -> Result<()> {
         "OK",
         store.last_error_message()?,
         &config.github_username,
+        &config.slack_user_id,
         &config.slack_username,
     )?;
     println!("{}", serde_json::to_string_pretty(&dump)?);
@@ -263,6 +269,7 @@ fn run_reset_state() -> Result<()> {
 fn run_clear_credentials() -> Result<()> {
     let credentials = credentials();
     credentials.delete(SLACK_TOKEN_ACCOUNT)?;
+    credentials.delete(SLACK_ACCESS_TOKEN_ACCOUNT)?;
     credentials.delete(GITHUB_TOKEN_ACCOUNT)?;
     println!("cleared stored credentials");
     Ok(())

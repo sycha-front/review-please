@@ -6,6 +6,7 @@ use crate::config::read_dotenv_map;
 
 pub const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 pub const SLACK_TOKEN_ACCOUNT: &str = "slack_user_token";
+pub const SLACK_ACCESS_TOKEN_ACCOUNT: &str = "slack_access_token";
 const SERVICE_NAME: &str = "com.review-please.app";
 const LEGACY_SERVICE_NAME: &str = "com.pr-please.app";
 
@@ -94,4 +95,11 @@ impl CredentialStore for SecurityCredentialStore {
             Err(error) => Err(error),
         }
     }
+}
+
+pub fn effective_slack_token(credentials: &dyn CredentialStore) -> Result<Option<String>> {
+    if let Some(value) = credentials.get(SLACK_ACCESS_TOKEN_ACCOUNT)? {
+        return Ok(Some(value));
+    }
+    credentials.get(SLACK_TOKEN_ACCOUNT)
 }

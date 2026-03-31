@@ -4,12 +4,25 @@ use tauri::{AppHandle, State};
 use crate::{
     config::{self, AppConfig},
     keychain::{
-        CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_TOKEN_ACCOUNT,
+        CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_ACCESS_TOKEN_ACCOUNT,
+        SLACK_TOKEN_ACCOUNT,
     },
     models::{ReviewDump, ReviewStatus},
-    services::{launch_agent, release::ReleaseStatus},
+    services::{
+        launch_agent,
+        release::ReleaseStatus,
+        slack_oauth::{create_session, open_authorize_url, poll_session, SlackOAuthSessionState},
+    },
     tray::AppState,
 };
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SlackAuthMode {
+    Oauth,
+    Manual,
+    Disconnected,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +39,10 @@ pub struct SettingsPayload {
     pub notify_on_errors: bool,
     pub hide_only_on_close: bool,
     pub launch_at_login: bool,
+    pub slack_auth_mode: SlackAuthMode,
+    pub slack_connected: bool,
+    pub slack_connected_user: Option<String>,
+    pub slack_connected_workspace: Option<String>,
     pub slack_token: String,
     pub github_token: String,
 }
@@ -67,10 +84,110 @@ pub struct UpdateReviewStatusPayload {
 #[serde(rename_all = "camelCase")]
 pub struct RunAppUpdatePayload {}
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartSlackOauthResponse {
+    pub session_id: String,
+    pub session_secret: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PollSlackOauthPayload {
+    pub session_id: String,
+    pub session_secret: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PollSlackOauthResponse {
+    pub status: String,
+    pub error: Option<String>,
+    pub settings: Option<SettingsPayload>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkUpdateEventsReadPayload {
     pub event_ids: Vec<String>,
+}
+
+fn normalize_optional(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn build_settings_payload(
+    config: &AppConfig,
+    credentials: &SecurityCredentialStore,
+) -> Result<SettingsPayload, String> {
+    let dotenv = config::read_dotenv_map().map_err(|error| error.to_string())?;
+    let oauth_slack_token = credentials
+        .get(SLACK_ACCESS_TOKEN_ACCOUNT)
+        .map_err(|error| error.to_string())?;
+    let slack_token = credentials
+        .get(SLACK_TOKEN_ACCOUNT)
+        .map_err(|error| error.to_string())?
+        .or_else(|| dotenv.get("SLACK_TOKEN").cloned())
+        .unwrap_or_default();
+    let github_token = credentials
+        .get(GITHUB_TOKEN_ACCOUNT)
+        .map_err(|error| error.to_string())?
+        .or_else(|| dotenv.get("GITHUB_TOKEN").cloned())
+        .unwrap_or_default();
+
+    let launch_at_login = launch_agent::is_enabled().map_err(|error| error.to_string())?;
+    let slack_auth_mode = if oauth_slack_token.is_some() {
+        SlackAuthMode::Oauth
+    } else if !slack_token.trim().is_empty() {
+        SlackAuthMode::Manual
+    } else {
+        SlackAuthMode::Disconnected
+    };
+
+    Ok(SettingsPayload {
+        slack_mention_keyword: config.slack_mention_keyword.clone(),
+        slack_username: config.slack_username.clone(),
+        github_username: config.github_username.clone(),
+        lookback_days: config.lookback_days,
+        slack_poll_interval_seconds: config.slack_poll_interval_seconds,
+        github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
+        done_menu_limit: config.done_menu_limit,
+        notify_on_new_pending: config.notify_on_new_pending,
+        notify_on_done: config.notify_on_done,
+        notify_on_errors: config.notify_on_errors,
+        hide_only_on_close: config.hide_only_on_close,
+        launch_at_login,
+        slack_auth_mode,
+        slack_connected: oauth_slack_token.is_some(),
+        slack_connected_user: normalize_optional(&config.slack_display_name)
+            .or_else(|| normalize_optional(&config.slack_username)),
+        slack_connected_workspace: normalize_optional(&config.slack_team_name),
+        slack_token,
+        github_token,
+    })
+}
+
+fn runtime_config(state: &State<'_, AppState>) -> Result<AppConfig, String> {
+    state
+        .runtime_config
+        .read()
+        .map_err(|_| "failed to read runtime config".to_string())
+        .map(|config| config.clone())
+}
+
+fn replace_runtime_config(state: &State<'_, AppState>, config: &AppConfig) -> Result<(), String> {
+    let mut runtime_config = state
+        .runtime_config
+        .write()
+        .map_err(|_| "failed to update runtime config".to_string())?;
+    *runtime_config = config.clone();
+    Ok(())
 }
 
 #[tauri::command]
@@ -92,6 +209,7 @@ pub fn get_review_dump(state: State<'_, AppState>) -> Result<ReviewDump, String>
             &status,
             last_error,
             &done_menu_limit.github_username,
+            &done_menu_limit.slack_user_id,
             &done_menu_limit.slack_username,
         )
         .map_err(|error| error.to_string())
@@ -117,6 +235,92 @@ pub async fn run_app_update(
 
     state.mark_quitting();
     app.restart();
+}
+
+#[tauri::command]
+pub fn start_slack_oauth(state: State<'_, AppState>) -> Result<StartSlackOauthResponse, String> {
+    let config = runtime_config(&state)?;
+    let session = create_session(&config).map_err(|error| error.to_string())?;
+    open_authorize_url(&session.authorize_url).map_err(|error| error.to_string())?;
+    Ok(StartSlackOauthResponse {
+        session_id: session.session_id,
+        session_secret: session.session_secret,
+        expires_at: session.expires_at,
+    })
+}
+
+#[tauri::command]
+pub fn poll_slack_oauth(
+    payload: PollSlackOauthPayload,
+    state: State<'_, AppState>,
+) -> Result<PollSlackOauthResponse, String> {
+    let config = runtime_config(&state)?;
+    let credentials = SecurityCredentialStore;
+    match poll_session(&config, &payload.session_id, &payload.session_secret)
+        .map_err(|error| error.to_string())?
+    {
+        SlackOAuthSessionState::Pending { .. } => Ok(PollSlackOauthResponse {
+            status: "pending".to_string(),
+            error: None,
+            settings: None,
+        }),
+        SlackOAuthSessionState::Expired => Ok(PollSlackOauthResponse {
+            status: "expired".to_string(),
+            error: Some("Slack 연결 시간이 만료되었어요. 다시 시도해주세요.".to_string()),
+            settings: None,
+        }),
+        SlackOAuthSessionState::Failed { error } => Ok(PollSlackOauthResponse {
+            status: "failed".to_string(),
+            error: Some(error),
+            settings: None,
+        }),
+        SlackOAuthSessionState::Completed(session) => {
+            credentials
+                .set(SLACK_ACCESS_TOKEN_ACCOUNT, &session.access_token)
+                .map_err(|error| error.to_string())?;
+
+            let mut next_config = config.clone();
+            next_config.slack_user_id = session.slack_user_id;
+            next_config.slack_team_id = session.team_id;
+            next_config.slack_display_name = session.slack_display_name.clone();
+            next_config.slack_team_name = session.team_name;
+            if !session.slack_display_name.trim().is_empty() {
+                next_config.slack_username = session.slack_display_name;
+            }
+            next_config.save().map_err(|error| error.to_string())?;
+            replace_runtime_config(&state, &next_config)?;
+
+            let _ = state.coordinator.refresh_tray();
+            let _ = state.coordinator.sync_now();
+
+            Ok(PollSlackOauthResponse {
+                status: "completed".to_string(),
+                error: None,
+                settings: Some(build_settings_payload(&next_config, &credentials)?),
+            })
+        }
+    }
+}
+
+#[tauri::command]
+pub fn disconnect_slack_oauth(state: State<'_, AppState>) -> Result<SettingsPayload, String> {
+    let mut config = runtime_config(&state)?;
+    let credentials = SecurityCredentialStore;
+    credentials
+        .delete(SLACK_ACCESS_TOKEN_ACCOUNT)
+        .map_err(|error| error.to_string())?;
+
+    config.slack_user_id.clear();
+    config.slack_team_id.clear();
+    config.slack_display_name.clear();
+    config.slack_team_name.clear();
+    config.save().map_err(|error| error.to_string())?;
+    replace_runtime_config(&state, &config)?;
+
+    let _ = state.coordinator.refresh_tray();
+    let _ = state.coordinator.sync_now();
+
+    build_settings_payload(&config, &credentials)
 }
 
 #[tauri::command]
@@ -176,37 +380,8 @@ pub fn mark_update_events_read(
 #[tauri::command]
 pub fn get_settings() -> Result<SettingsPayload, String> {
     let config = AppConfig::load_effective().map_err(|error| error.to_string())?;
-    let dotenv = config::read_dotenv_map().map_err(|error| error.to_string())?;
     let credentials = SecurityCredentialStore;
-    let slack_token = credentials
-        .get(SLACK_TOKEN_ACCOUNT)
-        .map_err(|error| error.to_string())?
-        .or_else(|| dotenv.get("SLACK_TOKEN").cloned())
-        .unwrap_or_default();
-    let github_token = credentials
-        .get(GITHUB_TOKEN_ACCOUNT)
-        .map_err(|error| error.to_string())?
-        .or_else(|| dotenv.get("GITHUB_TOKEN").cloned())
-        .unwrap_or_default();
-
-    let launch_at_login = launch_agent::is_enabled().map_err(|error| error.to_string())?;
-
-    Ok(SettingsPayload {
-        slack_mention_keyword: config.slack_mention_keyword,
-        slack_username: config.slack_username,
-        github_username: config.github_username,
-        lookback_days: config.lookback_days,
-        slack_poll_interval_seconds: config.slack_poll_interval_seconds,
-        github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
-        done_menu_limit: config.done_menu_limit,
-        notify_on_new_pending: config.notify_on_new_pending,
-        notify_on_done: config.notify_on_done,
-        notify_on_errors: config.notify_on_errors,
-        hide_only_on_close: config.hide_only_on_close,
-        launch_at_login,
-        slack_token,
-        github_token,
-    })
+    build_settings_payload(&config, &credentials)
 }
 
 #[tauri::command]
@@ -214,9 +389,14 @@ pub fn save_settings(
     payload: SaveSettingsPayload,
     state: State<'_, AppState>,
 ) -> Result<SettingsPayload, String> {
+    let existing = runtime_config(&state)?;
     let config = AppConfig {
         slack_mention_keyword: payload.slack_mention_keyword.trim().to_string(),
         slack_username: payload.slack_username.trim().to_string(),
+        slack_user_id: existing.slack_user_id,
+        slack_team_id: existing.slack_team_id,
+        slack_display_name: existing.slack_display_name,
+        slack_team_name: existing.slack_team_name,
         github_username: payload.github_username.trim().to_string(),
         lookback_days: payload.lookback_days,
         slack_poll_interval_seconds: payload.slack_poll_interval_seconds,
@@ -251,31 +431,10 @@ pub fn save_settings(
             .map_err(|error| error.to_string())?;
     }
 
-    {
-        let mut runtime_config = state
-            .runtime_config
-            .write()
-            .map_err(|_| "failed to update runtime config".to_string())?;
-        *runtime_config = config.clone();
-    }
+    replace_runtime_config(&state, &config)?;
 
     let _ = state.coordinator.refresh_tray();
     let _ = state.coordinator.sync_now();
 
-    Ok(SettingsPayload {
-        slack_mention_keyword: config.slack_mention_keyword,
-        slack_username: config.slack_username,
-        github_username: config.github_username,
-        lookback_days: config.lookback_days,
-        slack_poll_interval_seconds: config.slack_poll_interval_seconds,
-        github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
-        done_menu_limit: config.done_menu_limit,
-        notify_on_new_pending: config.notify_on_new_pending,
-        notify_on_done: config.notify_on_done,
-        notify_on_errors: config.notify_on_errors,
-        hide_only_on_close: config.hide_only_on_close,
-        launch_at_login: payload.launch_at_login,
-        slack_token: payload.slack_token.trim().to_string(),
-        github_token: payload.github_token.trim().to_string(),
-    })
+    build_settings_payload(&config, &credentials)
 }

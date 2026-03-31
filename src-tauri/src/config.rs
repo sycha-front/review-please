@@ -9,12 +9,18 @@ use serde::{Deserialize, Serialize};
 
 const APP_SUPPORT_DIR: &str = "Library/Application Support/review-please";
 const LEGACY_APP_SUPPORT_DIR: &str = "Library/Application Support/pr-please";
+pub const DEFAULT_SLACK_AUTH_SERVICE_URL: &str =
+    "https://review-please-slack-auth.pepprbell.workers.dev";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub slack_mention_keyword: String,
     pub slack_username: String,
+    pub slack_user_id: String,
+    pub slack_team_id: String,
+    pub slack_display_name: String,
+    pub slack_team_name: String,
     pub github_username: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
@@ -32,6 +38,10 @@ impl Default for AppConfig {
         Self {
             slack_mention_keyword: String::new(),
             slack_username: String::new(),
+            slack_user_id: String::new(),
+            slack_team_id: String::new(),
+            slack_display_name: String::new(),
+            slack_team_name: String::new(),
             github_username: String::new(),
             lookback_days: 7,
             slack_poll_interval_seconds: 120,
@@ -145,6 +155,18 @@ pub fn config_from_dotenv() -> Result<AppConfig> {
     }
     if let Some(value) = values.get("SLACK_USERNAME") {
         config.slack_username = value.clone();
+    }
+    if let Some(value) = values.get("SLACK_USER_ID") {
+        config.slack_user_id = value.clone();
+    }
+    if let Some(value) = values.get("SLACK_TEAM_ID") {
+        config.slack_team_id = value.clone();
+    }
+    if let Some(value) = values.get("SLACK_DISPLAY_NAME") {
+        config.slack_display_name = value.clone();
+    }
+    if let Some(value) = values.get("SLACK_TEAM_NAME") {
+        config.slack_team_name = value.clone();
     }
     if let Some(value) = values.get("GITHUB_USERNAME") {
         config.github_username = value.clone();

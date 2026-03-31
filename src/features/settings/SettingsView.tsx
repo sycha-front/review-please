@@ -32,7 +32,10 @@ export function SettingsView() {
     error: settingsError,
     isLoading: isSettingsLoading,
     isSaving,
+    isSlackConnecting,
     saveSettings,
+    connectSlack,
+    disconnectSlack,
   } = useSettings();
   const [form, setForm] = useState<SettingsPayload | null>(null);
 
@@ -73,9 +76,12 @@ export function SettingsView() {
         <SettingsForm
           form={form}
           isSaving={isSaving}
+          isSlackConnecting={isSlackConnecting}
           isDirty={isDirty}
           onSubmit={handleSubmit}
           onFieldChange={updateField}
+          onConnectSlack={connectSlack}
+          onDisconnectSlack={disconnectSlack}
         />
       )}
     </section>

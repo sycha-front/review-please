@@ -8,6 +8,12 @@ pub fn matches_slack_username(candidate: &str, slack_username: &str) -> bool {
     !candidate.is_empty() && candidate == slack_username
 }
 
+pub fn matches_slack_user_id(candidate: &str, slack_user_id: &str) -> bool {
+    let candidate = candidate.trim();
+    let slack_user_id = slack_user_id.trim();
+    !candidate.is_empty() && candidate == slack_user_id
+}
+
 pub fn should_mark_done(event_kind: &str, actor_is_me: bool) -> bool {
     actor_is_me && event_kind == EventKind::Approved.as_str()
 }
@@ -16,8 +22,12 @@ pub fn classify_review_request(
     request: &ReviewRequest,
     events: &[GithubEvent],
     github_username: &str,
+    slack_user_id: &str,
     slack_username: &str,
 ) -> Option<ReviewStatus> {
+    if matches_slack_user_id(&request.requester_slack_user_id, slack_user_id) {
+        return None;
+    }
     if matches_slack_username(&request.requester_display_name, slack_username) {
         return None;
     }
@@ -25,7 +35,7 @@ pub fn classify_review_request(
     let is_my_pr = request
         .pr_author_login
         .as_deref()
-        .map(|login| login == github_username)
+        .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
     let has_my_approval = events
         .iter()
@@ -90,7 +100,9 @@ fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {
 mod tests {
     use crate::models::{GithubEvent, GithubPullRef, ReviewRequest};
 
-    use super::{classify_review_request, matches_slack_username, should_mark_done};
+    use super::{
+        classify_review_request, matches_slack_user_id, matches_slack_username, should_mark_done,
+    };
 
     #[test]
     fn marks_done_only_for_my_approval() {
@@ -138,10 +150,17 @@ mod tests {
         }];
 
         assert_eq!(
-            classify_review_request(&request, &events, "sycha-front", "review-bot")
+            classify_review_request(&request, &events, "sycha-front", "", "review-bot")
                 .map(|value| value.as_str().to_string()),
             Some("update".to_string())
         );
+    }
+
+    #[test]
+    fn matches_slack_user_id_exactly() {
+        assert!(matches_slack_user_id("U123", "U123"));
+        assert!(matches_slack_user_id(" U123 ", "U123"));
+        assert!(!matches_slack_user_id("U123", "U999"));
     }
 
     #[test]
@@ -174,8 +193,79 @@ mod tests {
         );
 
         assert_eq!(
-            classify_review_request(&request, &[], "sycha-front", "@차수연"),
+            classify_review_request(&request, &[], "sycha-front", "", "@차수연"),
             None
+        );
+    }
+
+    #[test]
+    fn excludes_requests_sent_by_me_on_slack_user_id() {
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 1,
+        };
+        let request = ReviewRequest::new(
+            &pull,
+            "PR".to_string(),
+            Some("other-user".to_string()),
+            None,
+            "U123".to_string(),
+            "requester".to_string(),
+            None,
+            "1".to_string(),
+            None,
+            "hello".to_string(),
+            None,
+        );
+
+        assert_eq!(
+            classify_review_request(&request, &[], "sycha-front", "U123", "차수연"),
+            None
+        );
+    }
+
+    #[test]
+    fn treats_github_login_as_case_insensitive() {
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 1,
+        };
+        let mut request = ReviewRequest::new(
+            &pull,
+            "PR".to_string(),
+            Some("sycha-front".to_string()),
+            None,
+            "U123".to_string(),
+            "requester".to_string(),
+            None,
+            "1".to_string(),
+            None,
+            "hello".to_string(),
+            None,
+        );
+        request.pr_author_login = Some("sycha-front".to_string());
+
+        let events = vec![GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: request.pr_key.clone(),
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "author".to_string(),
+            event_kind: "commented".to_string(),
+            actor_login: Some("other-user".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        }];
+
+        assert_eq!(
+            classify_review_request(&request, &events, "Sycha-front", "", "review-bot")
+                .map(|value| value.as_str().to_string()),
+            Some("update".to_string())
         );
     }
 }

@@ -8,6 +8,30 @@
   gap: 16px;
 }
 
+.authCard {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--border-radius);
+  background: var(--white);
+}
+
+.authHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.authStatus {
+  margin: 0;
+  color: var(--gray-600);
+}
+
+.authActions {
+  display: grid;
+  gap: 8px;
+}
+
 .doubleColumn {
   display: grid;
   gap: 16px;
@@ -21,9 +45,11 @@
 }
 
 .helperText {
+  display: block;
   color: var(--gray-600);
   font-size: 12px;
   line-height: 14px;
+  margin-top: 4px;
 }
 
 .input {
@@ -37,6 +63,28 @@
 .input:hover,
 .input:focus {
   border: 1px solid var(--gray-300);
+}
+
+.secondaryButton,
+.toggleButton {
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--black);
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.secondaryButton:disabled,
+.toggleButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.advancedPanel {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
 }
 
 .saveButton {

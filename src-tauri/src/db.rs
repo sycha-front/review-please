@@ -60,6 +60,7 @@ pub trait ReviewStore: Send + Sync {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_user_id: &str,
         slack_username: &str,
     ) -> Result<ReviewDump>;
     fn tray_state(
@@ -67,6 +68,7 @@ pub trait ReviewStore: Send + Sync {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_user_id: &str,
         slack_username: &str,
     ) -> Result<TrayState>;
     fn last_error_message(&self) -> Result<Option<String>>;
@@ -187,6 +189,7 @@ impl SqliteStore {
         &self,
         connection: &Connection,
         github_username: &str,
+        slack_user_id: &str,
         slack_username: &str,
     ) -> Result<(
         Vec<ReviewRequest>,
@@ -226,6 +229,7 @@ impl SqliteStore {
                 &request,
                 &request_events,
                 github_username,
+                slack_user_id,
                 slack_username,
             ) {
                 Some(ReviewStatus::Pending) => {
@@ -450,7 +454,7 @@ fn build_update_feed_item(
     let is_my_pr = request
         .pr_author_login
         .as_deref()
-        .map(|login| login == github_username)
+        .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
 
     let activity_label = match event.notification_reason.as_str() {
@@ -1027,11 +1031,12 @@ impl ReviewStore for SqliteStore {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_user_id: &str,
         slack_username: &str,
     ) -> Result<ReviewDump> {
         let connection = self.connection()?;
         let (pending, mut done, update, all_events) =
-            self.categorized_requests(&connection, github_username, slack_username)?;
+            self.categorized_requests(&connection, github_username, slack_user_id, slack_username)?;
         let all_requests = self.fetch_review_requests(&connection)?;
         let update_feed = self.build_update_feed(&all_requests, &all_events, github_username);
         let slack_sync = integration_status_from_sync_state(
@@ -1085,11 +1090,12 @@ impl ReviewStore for SqliteStore {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        slack_user_id: &str,
         slack_username: &str,
     ) -> Result<TrayState> {
         let connection = self.connection()?;
         let (pending, done, update, _) =
-            self.categorized_requests(&connection, github_username, slack_username)?;
+            self.categorized_requests(&connection, github_username, slack_user_id, slack_username)?;
         Ok(TrayState {
             pending_count: pending.len() as u64,
             done_count: done.len() as u64,

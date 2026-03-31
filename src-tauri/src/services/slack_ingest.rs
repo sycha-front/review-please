@@ -8,7 +8,7 @@ use crate::{
     db::ReviewStore,
     models::{newer_ts, utc_now_string, ReviewRequest, SyncState},
     providers::{GithubProvider, SlackProvider},
-    services::review_state::matches_slack_username,
+    services::review_state::{matches_slack_user_id, matches_slack_username},
 };
 
 use crate::providers::{
@@ -82,6 +82,9 @@ pub fn run(
         }
         let pulls = extract_pull_requests(&message.text);
         if pulls.is_empty() {
+            continue;
+        }
+        if matches_slack_user_id(&message.user_id, &config.slack_user_id) {
             continue;
         }
         let base_date =

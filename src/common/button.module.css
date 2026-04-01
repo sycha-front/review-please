@@ -12,3 +12,17 @@
   opacity: 0.3;
   cursor: default;
 }
+
+.secondaryButton {
+  border: 1px solid var(--gray-200);
+  background: var(--white);
+  color: var(--black);
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -1,9 +1,11 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 
+import { RightArrow, Slack } from "../../assets/icons";
 import Button from "../../common/button";
 import { H1, H4, P3 } from "../../common/typo";
 import type { SettingsPayload } from "../../types/settings";
+import cn from "../../utils/cn";
 import s from "./settings.module.css";
 import {
   SettingsCheckboxField,
@@ -41,7 +43,7 @@ export function SettingsForm({
   const oauthButtonLabel = isSlackConnecting
     ? "브라우저에서 승인 대기 중..."
     : form.slackConnected
-      ? "Slack 다시 연결"
+      ? "다시 연결"
       : "Slack 연결";
   const authStatusText = form.slackConnected
     ? `${form.slackConnectedWorkspace ?? "워크스페이스"} / ${form.slackConnectedUser ?? "연결됨"}`
@@ -52,62 +54,65 @@ export function SettingsForm({
   return (
     <form onSubmit={onSubmit} className={s.form}>
       <H1>설정</H1>
-      <div className={s.authCard}>
-        <div className={s.authHeader}>
-          <H4>Slack 연결</H4>
-          <P3 className={s.authStatus}>{authStatusText}</P3>
-        </div>
-        <div className={s.authActions}>
+      <div className={cn(s.label)}>
+        <P3>Slack 연결</P3>
+        <div className={s.authCard}>
           <Button
-            type="button"
+            color={form.slackConnected ? "secondary" : ""}
+            className={s.input}
             disabled={isSlackConnecting}
             onClick={onConnectSlack}
           >
-            <H4>{oauthButtonLabel}</H4>
+            <Slack /> {oauthButtonLabel}
           </Button>
           {form.slackConnected && (
-            <button
-              type="button"
-              className={s.secondaryButton}
+            <Button
+              color="secondary"
+              className={s.input}
               disabled={isSlackConnecting}
               onClick={onDisconnectSlack}
             >
               연결 해제
-            </button>
+            </Button>
           )}
+          <Button
+            color="secondary"
+            className={cn(
+              s.input,
+              s.moreButton,
+              showAdvancedSlackToken ? s.moreButtonActive : "",
+            )}
+            onClick={() => setShowAdvancedSlackToken((current) => !current)}
+          >
+            <RightArrow />
+          </Button>
         </div>
-        <button
-          type="button"
-          className={s.toggleButton}
-          onClick={() => setShowAdvancedSlackToken((current) => !current)}
-        >
-          {showAdvancedSlackToken ? "고급 옵션 숨기기" : "고급 옵션 보기"}
-        </button>
+        <P3 className={s.helperText}>현재: {authStatusText}</P3>
         {showAdvancedSlackToken && (
           <div className={s.advancedPanel}>
             <SettingsTextField
               label="Slack 유저 토큰"
               type="password"
-              description="비상 상황용 수동 토큰입니다. OAuth 연결이 있으면 자동으로 우선 사용돼요."
+              description={`비상 상황용 수동 토큰입니다.${"\n"}OAuth 연결이 있으면 자동으로 우선 사용돼요.`}
               value={form.slackToken}
               onChange={(value) => onFieldChange("slackToken", value)}
+            />
+            <SettingsTextField
+              label="Slack 유저명"
+              value={form.slackUsername}
+              description="내 이벤트가 자동으로 식별되지 않을 때 입력해주세요."
+              onChange={(value) => onFieldChange("slackUsername", value)}
             />
           </div>
         )}
       </div>
+
       <SettingsTextField
-        label="Slack 멘션 키워드"
+        label="알림을 받을 Slack 멘션 키워드"
         value={form.slackMentionKeyword}
         placeholder="@my-name, team-review"
         description="콤마(,)로 구분해서 여러 키워드를 입력할 수 있어요."
         onChange={(value) => onFieldChange("slackMentionKeyword", value)}
-      />
-
-      <SettingsTextField
-        label="Slack 유저명"
-        value={form.slackUsername}
-        description="내 이벤트가 자동으로 식별되지 않을 때 입력해주세요."
-        onChange={(value) => onFieldChange("slackUsername", value)}
       />
 
       <SettingsTextField

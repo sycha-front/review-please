@@ -3,28 +3,28 @@ import { useEffect, useState } from "react";
 
 import { useSettings } from "../../hooks/useSettings";
 import type { SettingsPayload } from "../../types/settings";
+import { areFieldsEqual } from "../../utils/object";
 import { SettingsForm } from "./SettingsForm";
 import { errorTextStyle, loadingTextStyle } from "./styles";
 
 import i from "../../styles/index.module.css";
-function areSettingsEqual(left: SettingsPayload, right: SettingsPayload) {
-  return (
-    left.slackMentionKeyword === right.slackMentionKeyword &&
-    left.slackUsername === right.slackUsername &&
-    left.githubUsername === right.githubUsername &&
-    left.lookbackDays === right.lookbackDays &&
-    left.slackPollIntervalSeconds === right.slackPollIntervalSeconds &&
-    left.githubMinPollIntervalSeconds === right.githubMinPollIntervalSeconds &&
-    left.doneMenuLimit === right.doneMenuLimit &&
-    left.notifyOnNewPending === right.notifyOnNewPending &&
-    left.notifyOnDone === right.notifyOnDone &&
-    left.notifyOnErrors === right.notifyOnErrors &&
-    left.hideOnlyOnClose === right.hideOnlyOnClose &&
-    left.launchAtLogin === right.launchAtLogin &&
-    left.slackToken === right.slackToken &&
-    left.githubToken === right.githubToken
-  );
-}
+
+const DIRTY_CHECK_FIELDS = [
+  "slackMentionKeyword",
+  "slackUsername",
+  "githubUsername",
+  "lookbackDays",
+  "slackPollIntervalSeconds",
+  "githubMinPollIntervalSeconds",
+  "doneMenuLimit",
+  "notifyOnNewPending",
+  "notifyOnDone",
+  "notifyOnErrors",
+  "hideOnlyOnClose",
+  "launchAtLogin",
+  "slackToken",
+  "githubToken",
+] satisfies ReadonlyArray<keyof SettingsPayload>;
 
 export function SettingsView() {
   const {
@@ -54,13 +54,21 @@ export function SettingsView() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form || !settings || areSettingsEqual(form, settings)) {
+    if (
+      !form ||
+      !settings ||
+      areFieldsEqual(form, settings, DIRTY_CHECK_FIELDS)
+    ) {
       return;
     }
     await saveSettings(form);
   }
 
-  const isDirty = !!(form && settings && !areSettingsEqual(form, settings));
+  const isDirty = !!(
+    form &&
+    settings &&
+    !areFieldsEqual(form, settings, DIRTY_CHECK_FIELDS)
+  );
 
   return (
     <section className={i.panel} id="settings">

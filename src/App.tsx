@@ -1,9 +1,9 @@
 import "./App.css";
+import s from "./App.module.css";
 import { ReviewActionsProvider } from "./context/ReviewActionsContext";
 import Header from "./features/header/header";
 import Main from "./features/main";
 import { SettingsView } from "./features/settings/SettingsView";
-import { pageStyle } from "./features/settings/styles";
 import { useReviewDump } from "./hooks/useReviewDump";
 
 function App() {
@@ -12,7 +12,7 @@ function App() {
   const { snapshot } = reviewState;
 
   return (
-    <main style={pageStyle}>
+    <main className={s.page}>
       <Header integrations={snapshot?.integrations ?? null} />
       {snapshot && (
         <ReviewActionsProvider {...reviewState}>

@@ -55,16 +55,6 @@ pub struct GithubPullRef {
 }
 
 impl GithubPullRef {
-    pub fn from_key(value: &str) -> Option<Self> {
-        let (repo_path, number) = value.split_once('#')?;
-        let (owner, repo) = repo_path.split_once('/')?;
-        Some(Self {
-            owner: owner.to_string(),
-            repo: repo.to_string(),
-            number: number.parse::<i64>().ok()?,
-        })
-    }
-
     pub fn key(&self) -> String {
         format!("{}/{}#{}", self.owner, self.repo, self.number)
     }

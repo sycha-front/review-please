@@ -36,6 +36,7 @@ pub trait ReviewStore: Send + Sync {
         status: ReviewStatus,
     ) -> Result<()>;
     fn tracked_pr_keys(&self) -> Result<Vec<String>>;
+    fn should_fetch_comment_events(&self, pr_key: &str, github_username: &str) -> Result<bool>;
     fn refresh_review_request_pr_metadata(
         &self,
         pr_key: &str,
@@ -841,9 +842,32 @@ impl ReviewStore for SqliteStore {
 
     fn tracked_pr_keys(&self) -> Result<Vec<String>> {
         let connection = self.connection()?;
-        let mut statement = connection.prepare("SELECT DISTINCT pr_key FROM review_requests;")?;
+        let mut statement = connection.prepare(
+            "SELECT DISTINCT pr_key FROM review_requests WHERE status IN ('pending', 'update');",
+        )?;
         let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
         collect_rows(rows)
+    }
+
+    fn should_fetch_comment_events(&self, pr_key: &str, github_username: &str) -> Result<bool> {
+        let connection = self.connection()?;
+        let needs_comment_scan: bool = connection.query_row(
+            r#"
+            SELECT EXISTS(
+              SELECT 1
+              FROM review_requests
+              WHERE pr_key = ?1
+                AND status IN ('pending', 'update')
+                AND (
+                  pr_author_login IS NULL
+                  OR lower(pr_author_login) = lower(?2)
+                )
+            );
+            "#,
+            params![pr_key, github_username],
+            |row| row.get::<_, i64>(0),
+        )? != 0;
+        Ok(needs_comment_scan)
     }
 
     fn refresh_review_request_pr_metadata(

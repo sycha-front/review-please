@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs, process::Command, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs,
+    process::Command,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{anyhow, Context, Error, Result};
 use regex::Regex;
@@ -29,11 +34,15 @@ pub fn is_access_denied_error(error: &Error) -> bool {
 
 pub struct LocalGithubProvider {
     credentials: Arc<dyn CredentialStore>,
+    current_user_login: Mutex<Option<String>>,
 }
 
 impl LocalGithubProvider {
     pub fn new(credentials: Arc<dyn CredentialStore>) -> Self {
-        Self { credentials }
+        Self {
+            credentials,
+            current_user_login: Mutex::new(None),
+        }
     }
 
     fn token(&self) -> Result<String> {
@@ -50,7 +59,10 @@ impl LocalGithubProvider {
     }
 
     fn request_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T> {
-        let (status, _headers, body) = self.curl_with_headers(url, &[])?;
+        let (status, headers, body) = self.curl_with_headers(url, &[])?;
+        if let Some(error) = Self::build_rate_limit_error(url, &headers, &body) {
+            return Err(error);
+        }
         if matches!(status, 403 | 404) {
             return Err(anyhow!(
                 "GitHub access denied for {} (HTTP {})",
@@ -71,6 +83,28 @@ impl LocalGithubProvider {
             let preview = body.chars().take(240).collect::<String>();
             format!("failed to decode GitHub response from {}: {}", url, preview)
         })
+    }
+
+    fn build_rate_limit_error(
+        url: &str,
+        headers: &HashMap<String, String>,
+        body: &str,
+    ) -> Option<Error> {
+        let body_lower = body.to_ascii_lowercase();
+        let remaining = headers
+            .get("x-ratelimit-remaining")
+            .map(String::as_str)
+            .unwrap_or_default();
+        if remaining != "0" && !body_lower.contains("rate limit exceeded") {
+            return None;
+        }
+        let reset_suffix = headers
+            .get("x-ratelimit-reset")
+            .map(|value| format!(" until unix timestamp {value}"))
+            .unwrap_or_default();
+        Some(anyhow!(
+            "GitHub API rate limit exceeded for {url}{reset_suffix}"
+        ))
     }
 
     fn curl_with_headers(
@@ -289,8 +323,21 @@ impl LocalGithubProvider {
 
 impl super::GithubProvider for LocalGithubProvider {
     fn current_user_login(&self) -> Result<String> {
+        if let Some(login) = self
+            .current_user_login
+            .lock()
+            .map_err(|_| anyhow!("failed to lock GitHub login cache"))?
+            .clone()
+        {
+            return Ok(login);
+        }
         let response: CurrentUser = self.request_json("https://api.github.com/user")?;
-        Ok(response.login)
+        let login = response.login;
+        *self
+            .current_user_login
+            .lock()
+            .map_err(|_| anyhow!("failed to lock GitHub login cache"))? = Some(login.clone());
+        Ok(login)
     }
 
     fn fetch_pr_metadata(&self, pull: &GithubPullRef) -> Result<PullRequestMetadata> {
@@ -337,6 +384,13 @@ impl super::GithubProvider for LocalGithubProvider {
                 last_modified,
             });
         }
+        if let Some(error) = Self::build_rate_limit_error(
+            "https://api.github.com/notifications?all=true&per_page=100",
+            &headers,
+            &body,
+        ) {
+            return Err(error);
+        }
         if !(200..300).contains(&status) {
             return Err(anyhow!("GitHub notifications returned HTTP {status}"));
         }
@@ -365,45 +419,12 @@ impl super::GithubProvider for LocalGithubProvider {
         })
     }
 
-    fn fetch_events_for_pull(
-        &self,
-        pull: &GithubPullRef,
-        since: Option<&str>,
-        current_user_login: &str,
-    ) -> Result<Vec<GithubEvent>> {
-        let thread_id = format!("scan:{}", pull.key());
-        let reason = "direct_scan";
-        let mut events = Vec::new();
-        events.extend(self.collect_review_events(
-            pull,
-            reason,
-            &thread_id,
-            since,
-            current_user_login,
-        )?);
-        events.extend(self.collect_issue_comment_events(
-            pull,
-            reason,
-            &thread_id,
-            since,
-            current_user_login,
-        )?);
-        events.extend(self.collect_review_comment_events(
-            pull,
-            reason,
-            &thread_id,
-            since,
-            current_user_login,
-        )?);
-        events.sort_by(|left, right| left.event_at.cmp(&right.event_at));
-        Ok(events)
-    }
-
     fn fetch_events_for_thread(
         &self,
         thread: &GithubNotificationThread,
         since: Option<&str>,
         current_user_login: &str,
+        include_comment_events: bool,
     ) -> Result<Vec<GithubEvent>> {
         let pull = thread
             .pull
@@ -417,20 +438,22 @@ impl super::GithubProvider for LocalGithubProvider {
             since,
             current_user_login,
         )?);
-        events.extend(self.collect_issue_comment_events(
-            pull,
-            &thread.reason,
-            &thread.id,
-            since,
-            current_user_login,
-        )?);
-        events.extend(self.collect_review_comment_events(
-            pull,
-            &thread.reason,
-            &thread.id,
-            since,
-            current_user_login,
-        )?);
+        if include_comment_events {
+            events.extend(self.collect_issue_comment_events(
+                pull,
+                &thread.reason,
+                &thread.id,
+                since,
+                current_user_login,
+            )?);
+            events.extend(self.collect_review_comment_events(
+                pull,
+                &thread.reason,
+                &thread.id,
+                since,
+                current_user_login,
+            )?);
+        }
         events.sort_by(|left, right| left.event_at.cmp(&right.event_at));
         if events.is_empty() {
             events.push(GithubEvent {

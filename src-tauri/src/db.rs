@@ -24,8 +24,7 @@ pub trait ReviewStore: Send + Sync {
     fn init_schema(&self) -> Result<()>;
     fn clear_state(&self) -> Result<()>;
     fn prune_history(&self, lookback_days: u64) -> Result<()>;
-    fn review_request_exists(&self, slack_message_ts: &str, pr_key: &str) -> Result<bool>;
-    fn upsert_review_request(&self, request: &ReviewRequest) -> Result<()>;
+    fn upsert_review_request(&self, request: &ReviewRequest) -> Result<bool>;
     fn update_review_request_deadline(
         &self,
         review_request_id: &str,
@@ -134,6 +133,11 @@ impl SqliteStore {
             CREATE TABLE IF NOT EXISTS github_events (
               id TEXT PRIMARY KEY,
               pr_key TEXT NOT NULL,
+              pr_title TEXT,
+              repo_owner TEXT,
+              repo_name TEXT,
+              pr_number INTEGER,
+              pr_author_login TEXT,
               notification_thread_id TEXT NOT NULL,
               notification_reason TEXT NOT NULL,
               event_kind TEXT NOT NULL,
@@ -161,6 +165,11 @@ impl SqliteStore {
             );
             "#,
         )?;
+        add_column_if_missing(connection, "github_events", "pr_title", "TEXT")?;
+        add_column_if_missing(connection, "github_events", "repo_owner", "TEXT")?;
+        add_column_if_missing(connection, "github_events", "repo_name", "TEXT")?;
+        add_column_if_missing(connection, "github_events", "pr_number", "INTEGER")?;
+        add_column_if_missing(connection, "github_events", "pr_author_login", "TEXT")?;
         add_column_if_missing(connection, "review_requests", "pr_author_login", "TEXT")?;
         add_column_if_missing(connection, "review_requests", "pr_merged_at", "TEXT")?;
         add_column_if_missing(
@@ -290,8 +299,7 @@ impl SqliteStore {
         let items = events
             .iter()
             .filter_map(|event| {
-                let request = requests_by_pr.get(&event.pr_key)?;
-                build_update_feed_item(event, request, github_username)
+                build_update_feed_item(event, requests_by_pr.get(&event.pr_key), github_username)
             })
             .collect::<Vec<_>>();
 
@@ -436,6 +444,11 @@ fn row_to_github_event(row: &Row<'_>) -> rusqlite::Result<GithubEvent> {
     Ok(GithubEvent {
         id: row.get("id")?,
         pr_key: row.get("pr_key")?,
+        pr_title: row.get("pr_title")?,
+        repo_owner: row.get("repo_owner")?,
+        repo_name: row.get("repo_name")?,
+        pr_number: row.get("pr_number")?,
+        pr_author_login: row.get("pr_author_login")?,
         notification_thread_id: row.get("notification_thread_id")?,
         notification_reason: row.get("notification_reason")?,
         event_kind: row.get("event_kind")?,
@@ -469,7 +482,7 @@ fn row_to_sync_state(row: &Row<'_>) -> rusqlite::Result<SyncState> {
 
 fn build_update_feed_item(
     event: &GithubEvent,
-    request: &ReviewRequest,
+    request: Option<&ReviewRequest>,
     github_username: &str,
 ) -> Option<UpdateFeedItem> {
     if event
@@ -482,12 +495,13 @@ fn build_update_feed_item(
     }
 
     let is_my_pr = request
-        .pr_author_login
-        .as_deref()
+        .and_then(|value| value.pr_author_login.as_deref())
+        .or(event.pr_author_login.as_deref())
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
 
     let activity_label = match event.notification_reason.as_str() {
+        "review_requested" => "새 리뷰 요청",
         "mention" | "team_mention" => "새 멘션",
         _ if is_my_pr && !event.actor_is_me && event.event_kind == "approved" => "새 approve",
         _ if is_my_pr && !event.actor_is_me && event.event_kind == "changes_requested" => {
@@ -502,13 +516,28 @@ fn build_update_feed_item(
         _ => return None,
     };
 
-    let target_label = format!("PR #{} {}", request.pr_number, request.pr_title);
+    let pr_number = request.map(|value| value.pr_number).or(event.pr_number)?;
+    let pr_title = request
+        .map(|value| value.pr_title.clone())
+        .or_else(|| event.pr_title.clone())
+        .unwrap_or_else(|| event.pr_key.clone());
+    let repo_owner = request
+        .map(|value| value.repo_owner.clone())
+        .or_else(|| event.repo_owner.clone())?;
+    let repo_name = request
+        .map(|value| value.repo_name.clone())
+        .or_else(|| event.repo_name.clone())?;
+    let pr_url = request
+        .map(|value| value.pr_url.clone())
+        .unwrap_or_else(|| format!("https://github.com/{repo_owner}/{repo_name}/pull/{pr_number}"));
+
+    let target_label = format!("PR #{pr_number} {pr_title}");
     let headline = if is_my_pr
         && !matches!(
             event.notification_reason.as_str(),
-            "mention" | "team_mention"
+            "mention" | "team_mention" | "review_requested"
         ) {
-        format!("내 PR #{}에 {}", request.pr_number, activity_label)
+        format!("내 PR #{pr_number}에 {activity_label}")
     } else {
         format!("{target_label}에 {activity_label}")
     };
@@ -518,7 +547,7 @@ fn build_update_feed_item(
         .get("html_url")
         .and_then(Value::as_str)
         .map(ToString::to_string)
-        .unwrap_or_else(|| request.pr_url.clone());
+        .unwrap_or(pr_url);
     let summary = payload
         .get("body")
         .and_then(Value::as_str)
@@ -535,8 +564,8 @@ fn build_update_feed_item(
         time_label: format_time_label(&event.event_at),
         occurred_at: event.event_at.clone(),
         actor_login: event.actor_login.clone(),
-        actor_context: format_actor_context(event, request),
-        repo_label: format!("{}/{}", request.repo_owner, request.repo_name),
+        actor_context: format_actor_context(event, &repo_owner, &repo_name, pr_number),
+        repo_label: format!("{repo_owner}/{repo_name}"),
         activity_label: activity_label.to_string(),
         event_kind: event.event_kind.clone(),
         event_count: 1,
@@ -706,10 +735,15 @@ fn summarize_body(body: &str) -> Option<String> {
     Some(summary)
 }
 
-fn format_actor_context(event: &GithubEvent, request: &ReviewRequest) -> String {
-    let repo = format!("{}/{}", request.repo_owner, request.repo_name);
+fn format_actor_context(
+    event: &GithubEvent,
+    repo_owner: &str,
+    repo_name: &str,
+    pr_number: i64,
+) -> String {
+    let repo = format!("{repo_owner}/{repo_name}");
     match event.event_kind.as_str() {
-        "commented" | "review_commented" => format!("@{repo}/pull#{}", request.pr_number),
+        "commented" | "review_commented" => format!("@{repo}/pull#{pr_number}"),
         _ => format!("@{repo}"),
     }
 }
@@ -763,19 +797,95 @@ impl ReviewStore for SqliteStore {
         self.prune_history_with_connection(&connection, lookback_days)
     }
 
-    fn review_request_exists(&self, slack_message_ts: &str, pr_key: &str) -> Result<bool> {
-        let connection = self.connection()?;
-        let count: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM review_requests WHERE slack_message_ts = ?1 AND pr_key = ?2;",
-            params![slack_message_ts, pr_key],
-            |row| row.get(0),
-        )?;
-        Ok(count > 0)
-    }
+    fn upsert_review_request(&self, request: &ReviewRequest) -> Result<bool> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
 
-    fn upsert_review_request(&self, request: &ReviewRequest) -> Result<()> {
-        let connection = self.connection()?;
-        connection.execute(
+        // Reuse the latest active request for the same PR so repeated Slack nudges
+        // refresh one pending card instead of stacking duplicates in the queue.
+        let existing_active = transaction
+            .query_row(
+                r#"
+                SELECT id
+                FROM review_requests
+                WHERE pr_key = ?1
+                  AND status IN ('pending', 'update')
+                  AND is_status_manual = 0
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1;
+                "#,
+                params![request.pr_key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+
+        if let Some(existing_id) = existing_active {
+            transaction.execute(
+                r#"
+                UPDATE review_requests
+                SET pr_url = ?1,
+                    pr_title = ?2,
+                    repo_owner = ?3,
+                    repo_name = ?4,
+                    pr_number = ?5,
+                    pr_author_login = ?6,
+                    pr_merged_at = ?7,
+                    requester_slack_user_id = ?8,
+                    requester_display_name = ?9,
+                    slack_channel_id = ?10,
+                    slack_message_ts = ?11,
+                    slack_permalink = ?12,
+                    slack_text = ?13,
+                    deadline_date = ?14,
+                    status = 'pending',
+                    is_status_manual = 0,
+                    completed_at = NULL,
+                    completion_event_id = NULL,
+                    updated_at = ?15
+                WHERE id = ?16;
+                "#,
+                params![
+                    request.pr_url,
+                    request.pr_title,
+                    request.repo_owner,
+                    request.repo_name,
+                    request.pr_number,
+                    request.pr_author_login,
+                    request.pr_merged_at,
+                    request.requester_slack_user_id,
+                    request.requester_display_name,
+                    request.slack_channel_id,
+                    request.slack_message_ts,
+                    request.slack_permalink,
+                    request.slack_text,
+                    request.deadline_date,
+                    request.updated_at,
+                    existing_id,
+                ],
+            )?;
+
+            transaction.execute(
+                r#"
+                DELETE FROM review_requests
+                WHERE pr_key = ?1
+                  AND status IN ('pending', 'update')
+                  AND is_status_manual = 0
+                  AND id <> ?2;
+                "#,
+                params![request.pr_key, existing_id],
+            )?;
+
+            transaction.commit()?;
+            return Ok(false);
+        }
+
+        let existed_same_message: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM review_requests WHERE slack_message_ts = ?1 AND pr_key = ?2);",
+            params![request.slack_message_ts, request.pr_key],
+            |row| row.get::<_, i64>(0),
+        )? != 0;
+
+        transaction.execute(
             r#"
             INSERT INTO review_requests (
               id, pr_key, pr_url, pr_title, repo_owner, repo_name, pr_number,
@@ -831,7 +941,8 @@ impl ReviewStore for SqliteStore {
                 request.updated_at,
             ],
         )?;
-        Ok(())
+        transaction.commit()?;
+        Ok(!existed_same_message)
     }
 
     fn update_review_request_deadline(
@@ -951,14 +1062,20 @@ impl ReviewStore for SqliteStore {
         connection.execute(
             r#"
             INSERT INTO github_events (
-              id, pr_key, notification_thread_id, notification_reason, event_kind,
+              id, pr_key, pr_title, repo_owner, repo_name, pr_number, pr_author_login,
+              notification_thread_id, notification_reason, event_kind,
               actor_login, actor_is_me, related_to_me, event_at, payload_json, created_at, read_at
             ) VALUES (
-              ?1, ?2, ?3, ?4, ?5,
-              ?6, ?7, ?8, ?9, ?10, ?11, ?12
+              ?1, ?2, ?3, ?4, ?5, ?6, ?7,
+              ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
             )
             ON CONFLICT(id) DO UPDATE SET
               pr_key = excluded.pr_key,
+              pr_title = excluded.pr_title,
+              repo_owner = excluded.repo_owner,
+              repo_name = excluded.repo_name,
+              pr_number = excluded.pr_number,
+              pr_author_login = excluded.pr_author_login,
               notification_thread_id = excluded.notification_thread_id,
               notification_reason = excluded.notification_reason,
               event_kind = excluded.event_kind,
@@ -966,11 +1083,17 @@ impl ReviewStore for SqliteStore {
               actor_is_me = excluded.actor_is_me,
               related_to_me = excluded.related_to_me,
               event_at = excluded.event_at,
-              payload_json = excluded.payload_json;
+              payload_json = excluded.payload_json,
+              read_at = excluded.read_at;
             "#,
             params![
                 event.id,
                 event.pr_key,
+                event.pr_title,
+                event.repo_owner,
+                event.repo_name,
+                event.pr_number,
+                event.pr_author_login,
                 event.notification_thread_id,
                 event.notification_reason,
                 event.event_kind,
@@ -1179,7 +1302,7 @@ mod tests {
     use anyhow::Result;
     use chrono::{Duration as ChronoDuration, Local, Utc};
 
-    use crate::models::{GithubEvent, GithubPullRef, ReviewRequest};
+    use crate::models::{GithubEvent, GithubPullRef, ReviewRequest, ReviewStatus};
 
     use super::{ReviewStore, SqliteStore};
 
@@ -1237,12 +1360,17 @@ mod tests {
             None,
         );
 
-        store.upsert_review_request(&recent_request)?;
-        store.upsert_review_request(&old_request)?;
+        assert!(store.upsert_review_request(&recent_request)?);
+        assert!(store.upsert_review_request(&old_request)?);
 
         let recent_event = GithubEvent {
             id: "event-recent".to_string(),
             pr_key: recent_request.pr_key.clone(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
             notification_thread_id: "thread-1".to_string(),
             notification_reason: "author".to_string(),
             event_kind: "commented".to_string(),
@@ -1257,6 +1385,11 @@ mod tests {
         let old_event = GithubEvent {
             id: "event-old".to_string(),
             pr_key: old_request.pr_key.clone(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
             notification_thread_id: "thread-2".to_string(),
             notification_reason: "author".to_string(),
             event_kind: "commented".to_string(),
@@ -1284,6 +1417,112 @@ mod tests {
             .recent_events
             .iter()
             .all(|event| event.id == "event-recent"));
+        Ok(())
+    }
+
+    #[test]
+    fn refreshes_existing_pending_request_for_same_pr() -> Result<()> {
+        let store = SqliteStore::new(temp_db_path("refresh-same-pr"))?;
+        store.init_schema()?;
+
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 7,
+        };
+
+        let first = ReviewRequest::new(
+            &pull,
+            "Initial title".to_string(),
+            Some("author".to_string()),
+            None,
+            "U111".to_string(),
+            "first requester".to_string(),
+            Some("C111".to_string()),
+            "1711930000.100000".to_string(),
+            Some("https://slack.com/archives/C111/p1711930000100000".to_string()),
+            "first message".to_string(),
+            Some("2026-04-02".to_string()),
+        );
+        assert!(store.upsert_review_request(&first)?);
+
+        let second = ReviewRequest::new(
+            &pull,
+            "Updated title".to_string(),
+            Some("author".to_string()),
+            None,
+            "U222".to_string(),
+            "second requester".to_string(),
+            Some("C222".to_string()),
+            "1711933600.200000".to_string(),
+            Some("https://slack.com/archives/C222/p1711933600200000".to_string()),
+            "second message".to_string(),
+            Some("2026-04-05".to_string()),
+        );
+        assert!(!store.upsert_review_request(&second)?);
+
+        let dump = store.dump(10, "OK", None, "me", "", "")?;
+        assert_eq!(dump.pending.len(), 1);
+
+        let pending = &dump.pending[0];
+        assert_eq!(pending.id, first.id);
+        assert_eq!(pending.pr_title, "Updated title");
+        assert_eq!(pending.requester_slack_user_id, "U222");
+        assert_eq!(pending.requester_display_name, "second requester");
+        assert_eq!(pending.slack_channel_id.as_deref(), Some("C222"));
+        assert_eq!(pending.slack_message_ts, "1711933600.200000");
+        assert_eq!(pending.slack_text, "second message");
+        assert_eq!(pending.deadline_date.as_deref(), Some("2026-04-05"));
+        Ok(())
+    }
+
+    #[test]
+    fn creates_new_pending_request_after_previous_one_is_done() -> Result<()> {
+        let store = SqliteStore::new(temp_db_path("new-after-done"))?;
+        store.init_schema()?;
+
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 8,
+        };
+
+        let first = ReviewRequest::new(
+            &pull,
+            "Initial title".to_string(),
+            Some("author".to_string()),
+            None,
+            "U111".to_string(),
+            "first requester".to_string(),
+            None,
+            "1711930000.100000".to_string(),
+            None,
+            "first message".to_string(),
+            None,
+        );
+        assert!(store.upsert_review_request(&first)?);
+        store.set_review_request_status_manual(&first.id, ReviewStatus::Done)?;
+
+        let second = ReviewRequest::new(
+            &pull,
+            "Follow-up title".to_string(),
+            Some("author".to_string()),
+            None,
+            "U222".to_string(),
+            "second requester".to_string(),
+            None,
+            "1711933600.200000".to_string(),
+            None,
+            "second message".to_string(),
+            None,
+        );
+        assert!(store.upsert_review_request(&second)?);
+
+        let dump = store.dump(10, "OK", None, "me", "", "")?;
+        assert_eq!(dump.pending.len(), 1);
+        assert_eq!(dump.done.len(), 1);
+        assert_eq!(dump.pending[0].id, second.id);
+        assert_eq!(dump.done[0].id, first.id);
         Ok(())
     }
 }

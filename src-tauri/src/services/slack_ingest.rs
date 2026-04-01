@@ -131,9 +131,6 @@ pub fn run(
                     None
                 }
             };
-            if !store.review_request_exists(&message.ts, &pull.key())? {
-                outcome.new_pending_count += 1;
-            }
             let pr_title = metadata
                 .as_ref()
                 .map(|value| value.title.clone())
@@ -153,7 +150,11 @@ pub fn run(
                 message.text.clone(),
                 deadline.clone(),
             );
-            store.upsert_review_request(&request)?;
+            // A repeated review request for the same PR should refresh the existing
+            // pending item instead of adding another copy to the queue.
+            if store.upsert_review_request(&request)? {
+                outcome.new_pending_count += 1;
+            }
         }
     }
 

@@ -147,6 +147,11 @@ pub struct PullRequestMetadata {
 pub struct GithubEvent {
     pub id: String,
     pub pr_key: String,
+    pub pr_title: Option<String>,
+    pub repo_owner: Option<String>,
+    pub repo_name: Option<String>,
+    pub pr_number: Option<i64>,
+    pub pr_author_login: Option<String>,
     pub notification_thread_id: String,
     pub notification_reason: String,
     pub event_kind: String,
@@ -258,6 +263,8 @@ pub struct SlackMessageRef {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubNotificationThread {
     pub id: String,
+    pub unread: bool,
+    pub last_read_at: Option<String>,
     pub reason: String,
     pub subject_type: String,
     pub subject_title: Option<String>,

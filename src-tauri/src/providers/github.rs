@@ -212,6 +212,11 @@ impl LocalGithubProvider {
                 Some(GithubEvent {
                     id: format!("review:{}", review.id),
                     pr_key: pull.key(),
+                    pr_title: None,
+                    repo_owner: None,
+                    repo_name: None,
+                    pr_number: None,
+                    pr_author_login: None,
                     notification_thread_id: thread_id.to_string(),
                     notification_reason: reason.to_string(),
                     event_kind: event_kind.as_str().to_string(),
@@ -257,6 +262,11 @@ impl LocalGithubProvider {
                 Some(GithubEvent {
                     id: format!("issue_comment:{}", comment.id),
                     pr_key: pull.key(),
+                    pr_title: None,
+                    repo_owner: None,
+                    repo_name: None,
+                    pr_number: None,
+                    pr_author_login: None,
                     notification_thread_id: thread_id.to_string(),
                     notification_reason: reason.to_string(),
                     event_kind: EventKind::Commented.as_str().to_string(),
@@ -302,6 +312,11 @@ impl LocalGithubProvider {
                 Some(GithubEvent {
                     id: format!("review_comment:{}", comment.id),
                     pr_key: pull.key(),
+                    pr_title: None,
+                    repo_owner: None,
+                    repo_name: None,
+                    pr_number: None,
+                    pr_author_login: None,
                     notification_thread_id: thread_id.to_string(),
                     notification_reason: reason.to_string(),
                     event_kind: EventKind::ReviewCommented.as_str().to_string(),
@@ -401,6 +416,8 @@ impl super::GithubProvider for LocalGithubProvider {
                 .into_iter()
                 .map(|thread| GithubNotificationThread {
                     id: thread.id,
+                    unread: thread.unread,
+                    last_read_at: thread.last_read_at,
                     reason: thread.reason,
                     subject_type: thread.subject.r#type,
                     subject_title: thread.subject.title,
@@ -459,6 +476,11 @@ impl super::GithubProvider for LocalGithubProvider {
             events.push(GithubEvent {
                 id: format!("unknown:{}:{}", thread.id, pull.key()),
                 pr_key: pull.key(),
+                pr_title: thread.subject_title.clone(),
+                repo_owner: Some(pull.owner.clone()),
+                repo_name: Some(pull.repo.clone()),
+                pr_number: Some(pull.number),
+                pr_author_login: None,
                 notification_thread_id: thread.id.clone(),
                 notification_reason: thread.reason.clone(),
                 event_kind: EventKind::Unknown.as_str().to_string(),
@@ -468,8 +490,27 @@ impl super::GithubProvider for LocalGithubProvider {
                 event_at: thread.updated_at.clone().unwrap_or_else(utc_now_string),
                 payload_json: json!(thread).to_string(),
                 created_at: utc_now_string(),
-                read_at: None,
+                read_at: if thread.unread {
+                    None
+                } else {
+                    thread
+                        .last_read_at
+                        .clone()
+                        .or_else(|| Some(utc_now_string()))
+                },
             });
+        }
+        for event in &mut events {
+            event.pr_title = thread.subject_title.clone();
+            event.repo_owner = Some(pull.owner.clone());
+            event.repo_name = Some(pull.repo.clone());
+            event.pr_number = Some(pull.number);
+            if !thread.unread {
+                event.read_at = thread
+                    .last_read_at
+                    .clone()
+                    .or_else(|| Some(utc_now_string()));
+            }
         }
         Ok(events)
     }
@@ -490,8 +531,10 @@ struct PullRequestResponse {
 #[derive(Debug, Deserialize)]
 struct NotificationThreadResponse {
     id: String,
+    unread: bool,
     reason: String,
     updated_at: Option<String>,
+    last_read_at: Option<String>,
     subject: NotificationSubject,
 }
 

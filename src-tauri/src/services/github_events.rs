@@ -51,12 +51,10 @@ pub fn run(
 
     for thread in poll_result.threads {
         let pull = match thread.pull.as_ref() {
-            Some(pull) if thread.subject_type == "PullRequest" && tracked.contains(&pull.key()) => {
-                pull
-            }
+            Some(pull) if thread.subject_type == "PullRequest" => pull,
             _ => continue,
         };
-        match github_provider.fetch_pr_metadata(pull) {
+        let metadata = match github_provider.fetch_pr_metadata(pull) {
             Ok(metadata) => {
                 let _ = store.refresh_review_request_pr_metadata(
                     &pull.key(),
@@ -64,6 +62,7 @@ pub fn run(
                     metadata.author_login.as_deref(),
                     metadata.merged_at.as_deref(),
                 );
+                Some(metadata)
             }
             Err(error) if is_access_denied_error(&error) => {
                 eprintln!(
@@ -74,11 +73,21 @@ pub fn run(
             }
             Err(error) => {
                 eprintln!("GitHub metadata refresh failed for {}: {error}", pull.key());
+                None
             }
-        }
+        };
         let since = store.latest_event_at_for_pr(&pull.key())?;
-        let include_comment_events =
-            store.should_fetch_comment_events(&pull.key(), &config.github_username)?;
+        let is_my_pr = metadata
+            .as_ref()
+            .and_then(|value| value.author_login.as_deref())
+            .map(|login| login.eq_ignore_ascii_case(&current_user_login))
+            .unwrap_or(false);
+        let include_comment_events = is_my_pr
+            || matches!(
+                thread.reason.as_str(),
+                "author" | "mention" | "team_mention" | "comment"
+            )
+            || store.should_fetch_comment_events(&pull.key(), &config.github_username)?;
         let events = match github_provider.fetch_events_for_thread(
             &thread,
             since.as_deref(),
@@ -95,9 +104,15 @@ pub fn run(
             }
             Err(error) => return Err(error),
         };
-        for event in events {
+        for mut event in events {
+            if let Some(metadata) = &metadata {
+                event.pr_title = Some(metadata.title.clone());
+                event.pr_author_login = metadata.author_login.clone();
+            }
             let _ = store.upsert_github_event(&event)?;
-            if should_mark_done(&event.event_kind, event.actor_is_me) {
+            if tracked.contains(&event.pr_key)
+                && should_mark_done(&event.event_kind, event.actor_is_me)
+            {
                 let completed = store.mark_requests_done_by_pr_key(
                     &event.pr_key,
                     &event.id,

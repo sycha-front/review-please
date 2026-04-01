@@ -137,6 +137,11 @@ mod tests {
         let events = vec![GithubEvent {
             id: "event-1".to_string(),
             pr_key: request.pr_key.clone(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
             notification_thread_id: "thread-1".to_string(),
             notification_reason: "author".to_string(),
             event_kind: "commented".to_string(),
@@ -250,6 +255,11 @@ mod tests {
         let events = vec![GithubEvent {
             id: "event-1".to_string(),
             pr_key: request.pr_key.clone(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
             notification_thread_id: "thread-1".to_string(),
             notification_reason: "author".to_string(),
             event_kind: "commented".to_string(),

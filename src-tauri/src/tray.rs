@@ -57,8 +57,6 @@ impl TrayController {
             MenuItem::with_id(app, MENU_STATUS_ID, "Status: OK", false, None::<&str>)?;
         let sync_now_item =
             MenuItem::with_id(app, MENU_SYNC_NOW_ID, "Sync Now", true, None::<&str>)?;
-        let settings_item =
-            MenuItem::with_id(app, MENU_SETTINGS_ID, "Settings", true, None::<&str>)?;
         let show_last_error_item = MenuItem::with_id(
             app,
             MENU_SHOW_LAST_ERROR_ID,
@@ -85,7 +83,6 @@ impl TrayController {
                 &status_item,
                 &separator,
                 &sync_now_item,
-                &settings_item,
                 &show_last_error_item,
                 &open_data_dir_item,
                 &quit_item,

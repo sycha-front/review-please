@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{DateTime, Datelike, Local};
+use chrono::{DateTime, Datelike, Duration as ChronoDuration, Local, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row, ToSql};
 use serde_json::Value;
 
@@ -23,6 +23,7 @@ use crate::{
 pub trait ReviewStore: Send + Sync {
     fn init_schema(&self) -> Result<()>;
     fn clear_state(&self) -> Result<()>;
+    fn prune_history(&self, lookback_days: u64) -> Result<()>;
     fn review_request_exists(&self, slack_message_ts: &str, pr_key: &str) -> Result<bool>;
     fn upsert_review_request(&self, request: &ReviewRequest) -> Result<()>;
     fn update_review_request_deadline(
@@ -332,6 +333,34 @@ impl SqliteStore {
             )
             .optional()?
             .flatten())
+    }
+
+    fn prune_history_with_connection(
+        &self,
+        connection: &Connection,
+        lookback_days: u64,
+    ) -> Result<()> {
+        if lookback_days == 0 {
+            return Ok(());
+        }
+
+        let slack_cutoff =
+            (Local::now() - ChronoDuration::days(lookback_days as i64)).timestamp() as f64;
+        let github_cutoff = (Utc::now() - ChronoDuration::days(lookback_days as i64)).to_rfc3339();
+
+        connection.execute(
+            "DELETE FROM review_requests WHERE CAST(slack_message_ts AS REAL) < ?1;",
+            params![slack_cutoff],
+        )?;
+        connection.execute(
+            r#"
+            DELETE FROM github_events
+            WHERE event_at < ?1
+               OR pr_key NOT IN (SELECT DISTINCT pr_key FROM review_requests);
+            "#,
+            params![github_cutoff],
+        )?;
+        Ok(())
     }
 }
 
@@ -727,6 +756,11 @@ impl ReviewStore for SqliteStore {
             "#,
         )?;
         self.init_schema_with_connection(&connection)
+    }
+
+    fn prune_history(&self, lookback_days: u64) -> Result<()> {
+        let connection = self.connection()?;
+        self.prune_history_with_connection(&connection, lookback_days)
     }
 
     fn review_request_exists(&self, slack_message_ts: &str, pr_key: &str) -> Result<bool> {
@@ -1135,5 +1169,121 @@ impl ReviewStore for SqliteStore {
     fn last_error_message(&self) -> Result<Option<String>> {
         let connection = self.connection()?;
         self.last_error_message_with_connection(&connection)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use anyhow::Result;
+    use chrono::{Duration as ChronoDuration, Local, Utc};
+
+    use crate::models::{GithubEvent, GithubPullRef, ReviewRequest};
+
+    use super::{ReviewStore, SqliteStore};
+
+    fn temp_db_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "review-please-{name}-{}.sqlite3",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn prunes_requests_and_events_outside_lookback_window() -> Result<()> {
+        let store = SqliteStore::new(temp_db_path("prune-history"))?;
+        store.init_schema()?;
+
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 1,
+        };
+
+        let recent_ts = (Local::now() - ChronoDuration::days(1))
+            .timestamp()
+            .to_string();
+        let old_ts = (Local::now() - ChronoDuration::days(10))
+            .timestamp()
+            .to_string();
+
+        let recent_request = ReviewRequest::new(
+            &pull,
+            "Recent".to_string(),
+            Some("other-user".to_string()),
+            None,
+            "U123".to_string(),
+            "requester".to_string(),
+            None,
+            recent_ts,
+            None,
+            "hello".to_string(),
+            None,
+        );
+        let mut old_pull = pull.clone();
+        old_pull.number = 2;
+        let old_request = ReviewRequest::new(
+            &old_pull,
+            "Old".to_string(),
+            Some("other-user".to_string()),
+            None,
+            "U999".to_string(),
+            "requester".to_string(),
+            None,
+            old_ts,
+            None,
+            "hello".to_string(),
+            None,
+        );
+
+        store.upsert_review_request(&recent_request)?;
+        store.upsert_review_request(&old_request)?;
+
+        let recent_event = GithubEvent {
+            id: "event-recent".to_string(),
+            pr_key: recent_request.pr_key.clone(),
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "author".to_string(),
+            event_kind: "commented".to_string(),
+            actor_login: Some("someone".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: (Utc::now() - ChronoDuration::days(1)).to_rfc3339(),
+            payload_json: "{}".to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            read_at: None,
+        };
+        let old_event = GithubEvent {
+            id: "event-old".to_string(),
+            pr_key: old_request.pr_key.clone(),
+            notification_thread_id: "thread-2".to_string(),
+            notification_reason: "author".to_string(),
+            event_kind: "commented".to_string(),
+            actor_login: Some("someone".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: (Utc::now() - ChronoDuration::days(10)).to_rfc3339(),
+            payload_json: "{}".to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            read_at: None,
+        };
+
+        store.upsert_github_event(&recent_event)?;
+        store.upsert_github_event(&old_event)?;
+
+        store.prune_history(7)?;
+
+        let dump = store.dump(10, "OK", None, "me", "", "")?;
+        assert_eq!(dump.pending.len(), 1);
+        assert!(dump
+            .pending
+            .iter()
+            .all(|item| item.pr_key == recent_request.pr_key));
+        assert!(dump
+            .recent_events
+            .iter()
+            .all(|event| event.id == "event-recent"));
+        Ok(())
     }
 }

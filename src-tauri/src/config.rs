@@ -15,6 +15,7 @@ pub const DEFAULT_SLACK_AUTH_SERVICE_URL: &str =
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
+    // These values are the user-editable settings we persist locally.
     pub slack_mention_keyword: String,
     pub slack_username: String,
     pub slack_user_id: String,
@@ -30,7 +31,6 @@ pub struct AppConfig {
     pub notify_on_done: bool,
     pub notify_on_errors: bool,
     pub hide_only_on_close: bool,
-    pub launch_at_login: bool,
 }
 
 impl Default for AppConfig {
@@ -51,7 +51,6 @@ impl Default for AppConfig {
             notify_on_done: true,
             notify_on_errors: true,
             hide_only_on_close: false,
-            launch_at_login: false,
         }
     }
 }
@@ -73,6 +72,7 @@ impl AppConfig {
     }
 
     pub fn load_effective() -> Result<Self> {
+        // Prefer the persisted desktop config once it exists; dotenv is only a bootstrap fallback.
         if config_path()?.exists() {
             return Self::load();
         }

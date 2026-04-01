@@ -116,13 +116,6 @@ export function SettingsForm({
       />
 
       <SettingsTextField
-        label="GitHub 유저명"
-        value={form.githubUsername}
-        description="내 이벤트 식별에 사용됩니다."
-        onChange={(value) => onFieldChange("githubUsername", value)}
-      />
-
-      <SettingsTextField
         label="GitHub 토큰 (classic)"
         type="password"
         description="필요 권한: notification, repo"
@@ -179,11 +172,6 @@ export function SettingsForm({
         checked={form.hideOnlyOnClose}
         onChange={(value) => onFieldChange("hideOnlyOnClose", value)}
       />
-      {/* <SettingsCheckboxField
-        label="로그인 시 자동 실행"
-        checked={form.launchAtLogin}
-        onChange={(value) => onFieldChange("launchAtLogin", value)}
-      /> */}
       <div className={s.saveButton}>
         <P3>설정은 로컬에만 저장됩니다.</P3>
         <Button

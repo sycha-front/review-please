@@ -12,7 +12,6 @@ import i from "../../styles/index.module.css";
 const DIRTY_CHECK_FIELDS = [
   "slackMentionKeyword",
   "slackUsername",
-  "githubUsername",
   "lookbackDays",
   "slackPollIntervalSeconds",
   "githubMinPollIntervalSeconds",
@@ -21,7 +20,6 @@ const DIRTY_CHECK_FIELDS = [
   "notifyOnDone",
   "notifyOnErrors",
   "hideOnlyOnClose",
-  "launchAtLogin",
   "slackToken",
   "githubToken",
 ] satisfies ReadonlyArray<keyof SettingsPayload>;

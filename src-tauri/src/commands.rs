@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
@@ -8,8 +10,8 @@ use crate::{
         SLACK_TOKEN_ACCOUNT,
     },
     models::{ReviewDump, ReviewStatus},
+    providers::{github::LocalGithubProvider, GithubProvider},
     services::{
-        launch_agent,
         release::ReleaseStatus,
         slack_oauth::{create_session, open_authorize_url, poll_session, SlackOAuthSessionState},
     },
@@ -29,7 +31,6 @@ pub enum SlackAuthMode {
 pub struct SettingsPayload {
     pub slack_mention_keyword: String,
     pub slack_username: String,
-    pub github_username: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
@@ -38,7 +39,6 @@ pub struct SettingsPayload {
     pub notify_on_done: bool,
     pub notify_on_errors: bool,
     pub hide_only_on_close: bool,
-    pub launch_at_login: bool,
     pub slack_auth_mode: SlackAuthMode,
     pub slack_connected: bool,
     pub slack_connected_user: Option<String>,
@@ -52,7 +52,6 @@ pub struct SettingsPayload {
 pub struct SaveSettingsPayload {
     pub slack_mention_keyword: String,
     pub slack_username: String,
-    pub github_username: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
@@ -61,7 +60,6 @@ pub struct SaveSettingsPayload {
     pub notify_on_done: bool,
     pub notify_on_errors: bool,
     pub hide_only_on_close: bool,
-    pub launch_at_login: bool,
     pub slack_token: String,
     pub github_token: String,
 }
@@ -122,10 +120,41 @@ fn normalize_optional(value: &str) -> Option<String> {
     }
 }
 
+struct FixedGithubTokenStore {
+    token: String,
+}
+
+impl CredentialStore for FixedGithubTokenStore {
+    fn get(&self, account: &str) -> anyhow::Result<Option<String>> {
+        if account == GITHUB_TOKEN_ACCOUNT {
+            return Ok(Some(self.token.clone()));
+        }
+        Ok(None)
+    }
+
+    fn set(&self, _account: &str, _secret: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn delete(&self, _account: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+fn detect_github_username(token: &str) -> Result<String, String> {
+    let provider = LocalGithubProvider::new(Arc::new(FixedGithubTokenStore {
+        token: token.to_string(),
+    }));
+    provider
+        .current_user_login()
+        .map_err(|error| error.to_string())
+}
+
 fn build_settings_payload(
     config: &AppConfig,
     credentials: &SecurityCredentialStore,
 ) -> Result<SettingsPayload, String> {
+    // The settings screen merges persisted config with secrets from the keychain.
     let dotenv = config::read_dotenv_map().map_err(|error| error.to_string())?;
     let oauth_slack_token = credentials
         .get(SLACK_ACCESS_TOKEN_ACCOUNT)
@@ -141,7 +170,6 @@ fn build_settings_payload(
         .or_else(|| dotenv.get("GITHUB_TOKEN").cloned())
         .unwrap_or_default();
 
-    let launch_at_login = launch_agent::is_enabled().map_err(|error| error.to_string())?;
     let slack_auth_mode = if oauth_slack_token.is_some() {
         SlackAuthMode::Oauth
     } else if !slack_token.trim().is_empty() {
@@ -153,7 +181,6 @@ fn build_settings_payload(
     Ok(SettingsPayload {
         slack_mention_keyword: config.slack_mention_keyword.clone(),
         slack_username: config.slack_username.clone(),
-        github_username: config.github_username.clone(),
         lookback_days: config.lookback_days,
         slack_poll_interval_seconds: config.slack_poll_interval_seconds,
         github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
@@ -162,7 +189,6 @@ fn build_settings_payload(
         notify_on_done: config.notify_on_done,
         notify_on_errors: config.notify_on_errors,
         hide_only_on_close: config.hide_only_on_close,
-        launch_at_login,
         slack_auth_mode,
         slack_connected: oauth_slack_token.is_some(),
         slack_connected_user: normalize_optional(&config.slack_display_name)
@@ -174,6 +200,7 @@ fn build_settings_payload(
 }
 
 fn runtime_config(state: &State<'_, AppState>) -> Result<AppConfig, String> {
+    // Sync/tray code shares a mutable in-memory config, so commands read through AppState.
     state
         .runtime_config
         .read()
@@ -390,28 +417,14 @@ pub fn save_settings(
     state: State<'_, AppState>,
 ) -> Result<SettingsPayload, String> {
     let existing = runtime_config(&state)?;
-    let config = AppConfig {
-        slack_mention_keyword: payload.slack_mention_keyword.trim().to_string(),
-        slack_username: payload.slack_username.trim().to_string(),
-        slack_user_id: existing.slack_user_id,
-        slack_team_id: existing.slack_team_id,
-        slack_display_name: existing.slack_display_name,
-        slack_team_name: existing.slack_team_name,
-        github_username: payload.github_username.trim().to_string(),
-        lookback_days: payload.lookback_days,
-        slack_poll_interval_seconds: payload.slack_poll_interval_seconds,
-        github_min_poll_interval_seconds: payload.github_min_poll_interval_seconds,
-        done_menu_limit: payload.done_menu_limit,
-        notify_on_new_pending: payload.notify_on_new_pending,
-        notify_on_done: payload.notify_on_done,
-        notify_on_errors: payload.notify_on_errors,
-        hide_only_on_close: payload.hide_only_on_close,
-        launch_at_login: payload.launch_at_login,
-    };
-    config.save().map_err(|error| error.to_string())?;
-    launch_agent::set_enabled(payload.launch_at_login).map_err(|error| error.to_string())?;
-
     let credentials = SecurityCredentialStore;
+    let github_token = payload.github_token.trim();
+    let github_username = if github_token.is_empty() {
+        String::new()
+    } else {
+        detect_github_username(github_token)?
+    };
+
     if payload.slack_token.trim().is_empty() {
         credentials
             .delete(SLACK_TOKEN_ACCOUNT)
@@ -421,15 +434,35 @@ pub fn save_settings(
             .set(SLACK_TOKEN_ACCOUNT, payload.slack_token.trim())
             .map_err(|error| error.to_string())?;
     }
-    if payload.github_token.trim().is_empty() {
+    if github_token.is_empty() {
         credentials
             .delete(GITHUB_TOKEN_ACCOUNT)
             .map_err(|error| error.to_string())?;
     } else {
         credentials
-            .set(GITHUB_TOKEN_ACCOUNT, payload.github_token.trim())
+            .set(GITHUB_TOKEN_ACCOUNT, github_token)
             .map_err(|error| error.to_string())?;
     }
+
+    // OAuth-derived Slack identity fields are preserved here and only refreshed by Slack OAuth.
+    let config = AppConfig {
+        slack_mention_keyword: payload.slack_mention_keyword.trim().to_string(),
+        slack_username: payload.slack_username.trim().to_string(),
+        slack_user_id: existing.slack_user_id,
+        slack_team_id: existing.slack_team_id,
+        slack_display_name: existing.slack_display_name,
+        slack_team_name: existing.slack_team_name,
+        github_username,
+        lookback_days: payload.lookback_days,
+        slack_poll_interval_seconds: payload.slack_poll_interval_seconds,
+        github_min_poll_interval_seconds: payload.github_min_poll_interval_seconds,
+        done_menu_limit: payload.done_menu_limit,
+        notify_on_new_pending: payload.notify_on_new_pending,
+        notify_on_done: payload.notify_on_done,
+        notify_on_errors: payload.notify_on_errors,
+        hide_only_on_close: payload.hide_only_on_close,
+    };
+    config.save().map_err(|error| error.to_string())?;
 
     replace_runtime_config(&state, &config)?;
 

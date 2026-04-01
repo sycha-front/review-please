@@ -23,6 +23,7 @@ pub fn run(
     store: Arc<dyn ReviewStore>,
     github_provider: Arc<dyn GithubProvider>,
 ) -> Result<GithubSyncOutcome> {
+    store.prune_history(config.lookback_days)?;
     let sync_state = store.get_sync_state(GITHUB_SYNC_SOURCE)?;
     let tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
     let poll_result = github_provider

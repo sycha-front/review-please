@@ -3,7 +3,6 @@ export type SlackAuthMode = "oauth" | "manual" | "disconnected";
 export type SettingsPayload = {
   slackMentionKeyword: string;
   slackUsername: string;
-  githubUsername: string;
   lookbackDays: number;
   slackPollIntervalSeconds: number;
   githubMinPollIntervalSeconds: number;
@@ -12,7 +11,6 @@ export type SettingsPayload = {
   notifyOnDone: boolean;
   notifyOnErrors: boolean;
   hideOnlyOnClose: boolean;
-  launchAtLogin: boolean;
   slackAuthMode: SlackAuthMode;
   slackConnected: boolean;
   slackConnectedUser: string | null;

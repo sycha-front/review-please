@@ -30,6 +30,7 @@ pub fn run(
     slack_provider: Arc<dyn SlackProvider>,
     github_provider: Arc<dyn GithubProvider>,
 ) -> Result<SlackSyncOutcome> {
+    store.prune_history(config.lookback_days)?;
     let sync_state = store.get_sync_state(SLACK_SYNC_SOURCE)?;
     let last_seen = sync_state.last_seen_slack_ts.as_deref();
     let mut outcome = SlackSyncOutcome::default();

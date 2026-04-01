@@ -331,7 +331,7 @@ mod tests {
             "notification_thread_id":"thread-1",
             "notification_reason":"mention",
             "event_kind":"approved",
-            "actor_login":"sycha-front",
+            "actor_login":"sample-dev",
             "actor_is_me":1,
             "related_to_me":0,
             "event_at":"2026-03-23T00:00:00Z",

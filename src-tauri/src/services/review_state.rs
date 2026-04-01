@@ -122,7 +122,7 @@ mod tests {
         let mut request = ReviewRequest::new(
             &pull,
             "PR".to_string(),
-            Some("sycha-front".to_string()),
+            Some("sample-dev".to_string()),
             None,
             "U123".to_string(),
             "requester".to_string(),
@@ -132,7 +132,7 @@ mod tests {
             "hello".to_string(),
             None,
         );
-        request.pr_author_login = Some("sycha-front".to_string());
+        request.pr_author_login = Some("sample-dev".to_string());
 
         let events = vec![GithubEvent {
             id: "event-1".to_string(),
@@ -150,7 +150,7 @@ mod tests {
         }];
 
         assert_eq!(
-            classify_review_request(&request, &events, "sycha-front", "", "review-bot")
+            classify_review_request(&request, &events, "sample-dev", "", "review-bot")
                 .map(|value| value.as_str().to_string()),
             Some("update".to_string())
         );
@@ -165,10 +165,10 @@ mod tests {
 
     #[test]
     fn matches_slack_username_ignores_at_sign_and_spacing() {
-        assert!(matches_slack_username("차수연", "@차수연"));
-        assert!(matches_slack_username("  Chasuyeon ", "chasuyeon"));
-        assert!(matches_slack_username("차수연", " 차수연 "));
-        assert!(!matches_slack_username("차수연", "최진실"));
+        assert!(matches_slack_username("Sample User", "@Sample User"));
+        assert!(matches_slack_username("  SampleUser ", "sampleuser"));
+        assert!(matches_slack_username("Sample User", " sample user "));
+        assert!(!matches_slack_username("Sample User", "Another User"));
     }
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
             Some("other-user".to_string()),
             None,
             "U123".to_string(),
-            "차수연".to_string(),
+            "Sample User".to_string(),
             None,
             "1".to_string(),
             None,
@@ -193,7 +193,7 @@ mod tests {
         );
 
         assert_eq!(
-            classify_review_request(&request, &[], "sycha-front", "", "@차수연"),
+            classify_review_request(&request, &[], "sample-dev", "", "@Sample User"),
             None
         );
     }
@@ -220,7 +220,7 @@ mod tests {
         );
 
         assert_eq!(
-            classify_review_request(&request, &[], "sycha-front", "U123", "차수연"),
+            classify_review_request(&request, &[], "sample-dev", "U123", "Sample User"),
             None
         );
     }
@@ -235,7 +235,7 @@ mod tests {
         let mut request = ReviewRequest::new(
             &pull,
             "PR".to_string(),
-            Some("sycha-front".to_string()),
+            Some("sample-dev".to_string()),
             None,
             "U123".to_string(),
             "requester".to_string(),
@@ -245,7 +245,7 @@ mod tests {
             "hello".to_string(),
             None,
         );
-        request.pr_author_login = Some("sycha-front".to_string());
+        request.pr_author_login = Some("sample-dev".to_string());
 
         let events = vec![GithubEvent {
             id: "event-1".to_string(),
@@ -263,7 +263,7 @@ mod tests {
         }];
 
         assert_eq!(
-            classify_review_request(&request, &events, "Sycha-front", "", "review-bot")
+            classify_review_request(&request, &events, "Sample-Dev", "", "review-bot")
                 .map(|value| value.as_str().to_string()),
             Some("update".to_string())
         );

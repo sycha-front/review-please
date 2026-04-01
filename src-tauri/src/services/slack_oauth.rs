@@ -186,16 +186,16 @@ mod tests {
     #[test]
     fn parses_completed_session() {
         let state = parse_poll_response(
-            r#"{"status":"completed","accessToken":"xoxp-1","slackUserId":"U123","slackDisplayName":"차수연","teamId":"T123","teamName":"fanmaum","scope":"search:read,users:read"}"#
+            r#"{"status":"completed","accessToken":"xoxp-test-1","slackUserId":"U_TEST_123","slackDisplayName":"Sample User","teamId":"T_TEST_123","teamName":"sample-workspace","scope":"search:read,users:read"}"#
                 .as_bytes(),
         )
         .expect("completed session");
 
         match state {
             SlackOAuthSessionState::Completed(session) => {
-                assert_eq!(session.access_token, "xoxp-1");
-                assert_eq!(session.slack_user_id, "U123");
-                assert_eq!(session.team_id, "T123");
+                assert_eq!(session.access_token, "xoxp-test-1");
+                assert_eq!(session.slack_user_id, "U_TEST_123");
+                assert_eq!(session.team_id, "T_TEST_123");
             }
             other => panic!("expected completed session, got {other:?}"),
         }

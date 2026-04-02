@@ -48,8 +48,8 @@ impl Default for AppConfig {
             github_min_poll_interval_seconds: 60,
             done_menu_limit: 10,
             notify_on_new_pending: true,
-            notify_on_done: true,
-            notify_on_errors: true,
+            notify_on_done: false,
+            notify_on_errors: false,
             hide_only_on_close: false,
         }
     }

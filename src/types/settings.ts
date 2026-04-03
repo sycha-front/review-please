@@ -8,6 +8,7 @@ export type SettingsPayload = {
   githubMinPollIntervalSeconds: number;
   doneMenuLimit: number;
   notifyOnNewPending: boolean;
+  notifyOnNewUpdates: boolean;
   notifyOnDone: boolean;
   notifyOnErrors: boolean;
   hideOnlyOnClose: boolean;

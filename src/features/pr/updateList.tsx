@@ -100,11 +100,12 @@ export function UpdateFeedCard({
       {item.summary && <P3 className={s.desc}>{item.summary}</P3>}
       <P3>{item.time_label}</P3>
       <div className={s.credit}>
-        <P3>{item.actor_login ?? "unknown"} </P3>
-        <P3>
-          <a {...repoLink}>{item.actor_context}</a>
-        </P3>
-        <P3>{item.event_count > 1 ? `· ${item.event_count}개 활동` : ""}</P3>
+        <div>
+          <P3>{item.actor_login ?? "unknown"} </P3>
+          <P3>
+            <a {...repoLink}>@{item.repo_label}</a>
+          </P3>
+        </div>
         <StatusCheckbox
           checked={item.is_read}
           label="읽음"

@@ -55,7 +55,7 @@ export function SettingsForm({
     <form onSubmit={onSubmit} className={s.form}>
       <H1>설정</H1>
       <div className={cn(s.label)}>
-        <P3>Slack 연결</P3>
+        Slack 연결
         <div className={s.authCard}>
           <Button
             color={form.slackConnected ? "secondary" : ""}
@@ -152,26 +152,33 @@ export function SettingsForm({
           }
         />
       </div>
-      <SettingsCheckboxField
-        label="리뷰 대기 중인 PR이 생겼을 때 알림"
-        checked={form.notifyOnNewPending}
-        onChange={(value) => onFieldChange("notifyOnNewPending", value)}
-      />
-      <SettingsCheckboxField
-        label="리뷰 완료 PR이 생겼을 때 알림"
-        checked={form.notifyOnDone}
-        onChange={(value) => onFieldChange("notifyOnDone", value)}
-      />
-      <SettingsCheckboxField
-        label="오류가 생겼을 때 알림"
-        checked={form.notifyOnErrors}
-        onChange={(value) => onFieldChange("notifyOnErrors", value)}
-      />
-      <SettingsCheckboxField
-        label="X를 누를 때만 숨기기"
-        checked={form.hideOnlyOnClose}
-        onChange={(value) => onFieldChange("hideOnlyOnClose", value)}
-      />
+      <div className={s.checkboxes}>
+        <SettingsCheckboxField
+          label="리뷰 대기 중인 PR이 생겼을 때 알림"
+          checked={form.notifyOnNewPending}
+          onChange={(value) => onFieldChange("notifyOnNewPending", value)}
+        />
+        <SettingsCheckboxField
+          label="새 소식이 생겼을 때 알림"
+          checked={form.notifyOnNewUpdates}
+          onChange={(value) => onFieldChange("notifyOnNewUpdates", value)}
+        />
+        <SettingsCheckboxField
+          label="리뷰 완료 PR이 생겼을 때 알림"
+          checked={form.notifyOnDone}
+          onChange={(value) => onFieldChange("notifyOnDone", value)}
+        />
+        <SettingsCheckboxField
+          label="오류가 생겼을 때 알림"
+          checked={form.notifyOnErrors}
+          onChange={(value) => onFieldChange("notifyOnErrors", value)}
+        />
+        <SettingsCheckboxField
+          label="X를 누를 때만 숨기기"
+          checked={form.hideOnlyOnClose}
+          onChange={(value) => onFieldChange("hideOnlyOnClose", value)}
+        />
+      </div>
       <div className={s.saveButton}>
         <P3>설정은 로컬에만 저장됩니다.</P3>
         <Button

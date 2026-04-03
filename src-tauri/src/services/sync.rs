@@ -151,6 +151,14 @@ impl LocalSyncCoordinator {
         let config = self.current_config();
         match github_events::run(&config, self.store.clone(), self.github_provider.clone()) {
             Ok(outcome) => {
+                if !outcome.new_update_pr_keys.is_empty() && config.notify_on_new_updates {
+                    let body = if outcome.new_update_pr_keys.len() == 1 {
+                        "새 소식 1건이 도착했어요.".to_string()
+                    } else {
+                        format!("새 소식 {}건이 도착했어요.", outcome.new_update_pr_keys.len())
+                    };
+                    let _ = self.notifications.notify("review-please", &body);
+                }
                 if config.notify_on_done {
                     for pr_key in &outcome.completed_pr_keys {
                         let _ = self

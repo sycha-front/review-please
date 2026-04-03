@@ -17,7 +17,7 @@ use crate::{
         ReviewDump, ReviewRequest, ReviewStatus, SyncState, TrayState, UpdateFeedItem,
     },
     providers::slack::{extract_deadline, slack_ts_to_local_date},
-    services::review_state::classify_review_request,
+    services::review_state::{classify_review_request, update_activity_label},
 };
 
 pub trait ReviewStore: Send + Sync {
@@ -485,36 +485,13 @@ fn build_update_feed_item(
     request: Option<&ReviewRequest>,
     github_username: &str,
 ) -> Option<UpdateFeedItem> {
-    if event
-        .actor_login
-        .as_deref()
-        .map(is_bot_login)
-        .unwrap_or(false)
-    {
-        return None;
-    }
-
-    let is_my_pr = request
+    let pr_author_login = request
         .and_then(|value| value.pr_author_login.as_deref())
-        .or(event.pr_author_login.as_deref())
+        .or(event.pr_author_login.as_deref());
+    let activity_label = update_activity_label(event, github_username, pr_author_login)?;
+    let is_my_pr = pr_author_login
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
-
-    let activity_label = match event.notification_reason.as_str() {
-        "review_requested" => "새 리뷰 요청",
-        "mention" | "team_mention" => "새 멘션",
-        _ if is_my_pr && !event.actor_is_me && event.event_kind == "approved" => "새 approve",
-        _ if is_my_pr && !event.actor_is_me && event.event_kind == "changes_requested" => {
-            "changes requested"
-        }
-        _ if is_my_pr
-            && !event.actor_is_me
-            && matches!(event.event_kind.as_str(), "commented" | "review_commented") =>
-        {
-            "새 comment"
-        }
-        _ => return None,
-    };
 
     let pr_number = request.map(|value| value.pr_number).or(event.pr_number)?;
     let pr_title = request
@@ -695,10 +672,6 @@ fn summarize_headline(latest: &UpdateFeedItem, activity_label: &str, event_count
     }
 
     headline
-}
-
-fn is_bot_login(login: &str) -> bool {
-    login.contains("[bot]")
 }
 
 fn integration_status_from_sync_state(sync_state: SyncState) -> IntegrationStatus {

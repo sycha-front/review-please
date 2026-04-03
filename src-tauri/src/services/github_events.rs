@@ -7,7 +7,7 @@ use crate::{
     db::ReviewStore,
     models::{utc_now_string, SyncState},
     providers::{github::is_access_denied_error, GithubProvider},
-    services::review_state::should_mark_done,
+    services::review_state::{should_mark_done, update_activity_label},
 };
 
 pub const GITHUB_SYNC_SOURCE: &str = "github_notifications";
@@ -16,6 +16,7 @@ pub const GITHUB_SYNC_SOURCE: &str = "github_notifications";
 pub struct GithubSyncOutcome {
     pub completed_request_count: u64,
     pub completed_pr_keys: Vec<String>,
+    pub new_update_pr_keys: Vec<String>,
 }
 
 pub fn run(
@@ -109,7 +110,21 @@ pub fn run(
                 event.pr_title = Some(metadata.title.clone());
                 event.pr_author_login = metadata.author_login.clone();
             }
-            let _ = store.upsert_github_event(&event)?;
+            let inserted = store.upsert_github_event(&event)?;
+            if inserted
+                && update_activity_label(
+                    &event,
+                    &current_user_login,
+                    metadata
+                        .as_ref()
+                        .and_then(|value| value.author_login.as_deref())
+                        .or(event.pr_author_login.as_deref()),
+                )
+                .is_some()
+                && !outcome.new_update_pr_keys.contains(&event.pr_key)
+            {
+                outcome.new_update_pr_keys.push(event.pr_key.clone());
+            }
             if tracked.contains(&event.pr_key)
                 && should_mark_done(&event.event_kind, event.actor_is_me)
             {

@@ -62,8 +62,16 @@ pub fn slack_ts_to_local_date(ts: &str) -> Option<NaiveDate> {
 }
 
 fn extract_numeric_deadline(content: &str, year: i32) -> Option<NaiveDate> {
-    let regex = Regex::new(r"(\d{1,2})\s*[/.]\s*(\d{1,2})").expect("valid regex");
-    let captures = regex.captures(content)?;
+    let slash_or_dot_regex = Regex::new(r"(\d{1,2})\s*[/.]\s*(\d{1,2})").expect("valid regex");
+    if let Some(captures) = slash_or_dot_regex.captures(content) {
+        let month = captures.get(1)?.as_str().parse::<u32>().ok()?;
+        let day = captures.get(2)?.as_str().parse::<u32>().ok()?;
+        return NaiveDate::from_ymd_opt(year, month, day);
+    }
+
+    let korean_regex =
+        Regex::new(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일").expect("valid regex");
+    let captures = korean_regex.captures(content)?;
     let month = captures.get(1)?.as_str().parse::<u32>().ok()?;
     let day = captures.get(2)?.as_str().parse::<u32>().ok()?;
     NaiveDate::from_ymd_opt(year, month, day)
@@ -361,6 +369,18 @@ mod tests {
             )
             .as_deref(),
             Some("2026-02-24")
+        );
+    }
+
+    #[test]
+    fn extracts_deadline_with_korean_month_day() {
+        assert_eq!(
+            extract_deadline(
+                "[리뷰 요청/4월 3일] review",
+                NaiveDate::from_ymd_opt(2026, 4, 1).expect("date")
+            )
+            .as_deref(),
+            Some("2026-04-03")
         );
     }
 

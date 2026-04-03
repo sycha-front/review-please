@@ -23,6 +23,7 @@ export default function DateInput({ item }: Props) {
 
     setIsSavingDeadline(true);
     try {
+      event.target.blur();
       await updateDeadline(item.id, nextDeadlineDate);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));

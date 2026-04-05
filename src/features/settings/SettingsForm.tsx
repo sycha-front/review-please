@@ -122,7 +122,13 @@ export function SettingsForm({
         value={form.githubToken}
         onChange={(value) => onFieldChange("githubToken", value)}
       >
-        <a href="https://github.com/settings/tokens">Github 토큰 발급 링크</a>
+        <a
+          href="https://github.com/settings/tokens"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Github 토큰 발급 링크
+        </a>
       </SettingsTextField>
 
       <div className={s.doubleColumn}>

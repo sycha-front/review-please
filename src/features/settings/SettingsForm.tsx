@@ -153,7 +153,7 @@ export function SettingsForm({
           onChange={(value) => onFieldChange("lookbackDays", value)}
         />
         <SettingsNumberField
-          label="완료된 PR 표시 갯수"
+          label="완료된 PR 표시 개수"
           value={form.doneMenuLimit}
           onChange={(value) => onFieldChange("doneMenuLimit", value)}
         />

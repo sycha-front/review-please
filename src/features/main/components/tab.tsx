@@ -40,6 +40,7 @@ export default function Tabs({ tab, setTab, counts }: Props) {
       >
         <P3>완료</P3>
       </Button>
+      <span className={s.rounded} />
     </div>
   );
 }

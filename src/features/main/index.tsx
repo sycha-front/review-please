@@ -25,7 +25,7 @@ export default function Main({ data }: Props) {
   }
 
   return (
-    <section>
+    <section className={s.main}>
       <Tabs
         tab={tab}
         setTab={handleTabClick}

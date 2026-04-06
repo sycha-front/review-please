@@ -1,17 +1,21 @@
 use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 
 use crate::{
     config::AppConfig,
     db::ReviewStore,
-    models::{utc_now_string, GithubNotificationThread, GithubPullRef, PullRequestMetadata, ReviewRequest, SyncState},
+    models::{
+        utc_now_string, GithubNotificationThread, GithubPullRef, PullRequestMetadata,
+        ReviewRequest, SyncState,
+    },
     providers::{github::is_access_denied_error, GithubProvider},
     services::review_state::{should_mark_done, update_activity_label},
 };
 
 pub const GITHUB_SYNC_SOURCE: &str = "github_notifications";
+const FULL_NOTIFICATIONS_REFRESH_INTERVAL_MINUTES: i64 = 15;
 
 #[derive(Debug, Default)]
 pub struct GithubSyncOutcome {
@@ -55,6 +59,17 @@ fn build_github_review_request(
     )
 }
 
+fn should_force_full_refresh(last_full_refresh_at: Option<&str>, now: DateTime<Utc>) -> bool {
+    let Some(last_full_refresh_at) = last_full_refresh_at else {
+        return true;
+    };
+    let Ok(last_full_refresh_at) = DateTime::parse_from_rfc3339(last_full_refresh_at) else {
+        return true;
+    };
+    now.signed_duration_since(last_full_refresh_at.with_timezone(&Utc))
+        >= Duration::minutes(FULL_NOTIFICATIONS_REFRESH_INTERVAL_MINUTES)
+}
+
 pub fn run(
     config: &AppConfig,
     store: Arc<dyn ReviewStore>,
@@ -63,13 +78,22 @@ pub fn run(
     store.prune_history(config.lookback_days)?;
     let sync_state = store.get_sync_state(GITHUB_SYNC_SOURCE)?;
     let mut tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
+    let now = Utc::now();
+    let refresh_state =
+        if should_force_full_refresh(sync_state.github_last_full_refresh_at.as_deref(), now) {
+            SyncState::new(GITHUB_SYNC_SOURCE)
+        } else {
+            sync_state.clone()
+        };
     let mut poll_result = github_provider
-        .fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
+        .fetch_notifications(&refresh_state, config.github_min_poll_interval_seconds)?;
     if poll_result.not_modified && store.github_event_count()? == 0 {
         // Recover from an empty local cache even when GitHub says nothing changed
         // since the last conditional request.
-        poll_result = github_provider
-            .fetch_notifications(&SyncState::new(GITHUB_SYNC_SOURCE), config.github_min_poll_interval_seconds)?;
+        poll_result = github_provider.fetch_notifications(
+            &SyncState::new(GITHUB_SYNC_SOURCE),
+            config.github_min_poll_interval_seconds,
+        )?;
     }
 
     let mut next_state = SyncState::new(GITHUB_SYNC_SOURCE);
@@ -82,6 +106,11 @@ pub fn run(
     next_state.github_poll_interval_seconds = poll_result
         .poll_interval_seconds
         .or(sync_state.github_poll_interval_seconds);
+    next_state.github_last_full_refresh_at = if poll_result.not_modified {
+        sync_state.github_last_full_refresh_at
+    } else {
+        next_state.last_polled_at.clone()
+    };
 
     if poll_result.not_modified {
         next_state.last_success_at = next_state.last_polled_at.clone();
@@ -206,9 +235,11 @@ pub fn run(
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Utc};
+
     use crate::models::{GithubNotificationThread, GithubPullRef, PullRequestMetadata};
 
-    use super::{build_github_review_request, notification_updated_ts};
+    use super::{build_github_review_request, notification_updated_ts, should_force_full_refresh};
 
     #[test]
     fn builds_pending_request_from_github_review_notification() {
@@ -239,7 +270,9 @@ mod tests {
         assert_eq!(request.pr_title, "Actual PR title");
         assert_eq!(request.requester_display_name, "GitHub 리뷰 요청");
         assert_eq!(request.slack_message_ts, "1775442600.000000");
-        assert!(request.slack_text.contains("GitHub에서 리뷰 요청이 왔습니다."));
+        assert!(request
+            .slack_text
+            .contains("GitHub에서 리뷰 요청이 왔습니다."));
     }
 
     #[test]
@@ -256,5 +289,35 @@ mod tests {
         };
 
         assert_eq!(notification_updated_ts(&thread), "1775442600.000000");
+    }
+
+    #[test]
+    fn forces_full_refresh_without_previous_refresh_time() {
+        let now = DateTime::parse_from_rfc3339("2026-04-06T05:45:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+
+        assert!(should_force_full_refresh(None, now));
+    }
+
+    #[test]
+    fn skips_full_refresh_when_previous_refresh_is_recent() {
+        let now = DateTime::parse_from_rfc3339("2026-04-06T05:45:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+
+        assert!(!should_force_full_refresh(
+            Some("2026-04-06T05:35:01Z"),
+            now
+        ));
+    }
+
+    #[test]
+    fn forces_full_refresh_when_previous_refresh_is_stale() {
+        let now = DateTime::parse_from_rfc3339("2026-04-06T05:45:00Z")
+            .expect("timestamp")
+            .with_timezone(&Utc);
+
+        assert!(should_force_full_refresh(Some("2026-04-06T05:29:59Z"), now));
     }
 }

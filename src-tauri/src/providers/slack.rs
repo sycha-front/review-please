@@ -69,8 +69,7 @@ fn extract_numeric_deadline(content: &str, year: i32) -> Option<NaiveDate> {
         return NaiveDate::from_ymd_opt(year, month, day);
     }
 
-    let korean_regex =
-        Regex::new(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일").expect("valid regex");
+    let korean_regex = Regex::new(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일").expect("valid regex");
     let captures = korean_regex.captures(content)?;
     let month = captures.get(1)?.as_str().parse::<u32>().ok()?;
     let day = captures.get(2)?.as_str().parse::<u32>().ok()?;

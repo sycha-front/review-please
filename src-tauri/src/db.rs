@@ -160,6 +160,7 @@ impl SqliteStore {
               last_seen_slack_ts TEXT,
               github_last_modified TEXT,
               github_etag TEXT,
+              github_last_full_refresh_at TEXT,
               github_poll_interval_seconds INTEGER,
               last_success_at TEXT,
               last_error TEXT,
@@ -181,6 +182,12 @@ impl SqliteStore {
             "INTEGER NOT NULL DEFAULT 0",
         )?;
         add_column_if_missing(connection, "github_events", "read_at", "TEXT")?;
+        add_column_if_missing(
+            connection,
+            "sync_state",
+            "github_last_full_refresh_at",
+            "TEXT",
+        )?;
         Ok(())
     }
 
@@ -320,7 +327,7 @@ impl SqliteStore {
         source: &str,
     ) -> Result<SyncState> {
         let mut statement = connection.prepare(
-            "SELECT source, last_polled_at, last_seen_slack_ts, github_last_modified, github_etag, github_poll_interval_seconds, last_success_at, last_error, consecutive_failures FROM sync_state WHERE source = ?1;",
+            "SELECT source, last_polled_at, last_seen_slack_ts, github_last_modified, github_etag, github_last_full_refresh_at, github_poll_interval_seconds, last_success_at, last_error, consecutive_failures FROM sync_state WHERE source = ?1;",
         )?;
         let row = statement
             .query_row([source], row_to_sync_state)
@@ -480,6 +487,7 @@ fn row_to_sync_state(row: &Row<'_>) -> rusqlite::Result<SyncState> {
         last_seen_slack_ts: row.get("last_seen_slack_ts")?,
         github_last_modified: row.get("github_last_modified")?,
         github_etag: row.get("github_etag")?,
+        github_last_full_refresh_at: row.get("github_last_full_refresh_at")?,
         github_poll_interval_seconds,
         last_success_at: row.get("last_success_at")?,
         last_error: row.get("last_error")?,
@@ -1169,16 +1177,18 @@ impl ReviewStore for SqliteStore {
             r#"
             INSERT INTO sync_state (
               source, last_polled_at, last_seen_slack_ts, github_last_modified,
-              github_etag, github_poll_interval_seconds, last_success_at, last_error, consecutive_failures
+              github_etag, github_last_full_refresh_at, github_poll_interval_seconds,
+              last_success_at, last_error, consecutive_failures
             ) VALUES (
               ?1, ?2, ?3, ?4,
-              ?5, ?6, ?7, ?8, ?9
+              ?5, ?6, ?7, ?8, ?9, ?10
             )
             ON CONFLICT(source) DO UPDATE SET
               last_polled_at = excluded.last_polled_at,
               last_seen_slack_ts = excluded.last_seen_slack_ts,
               github_last_modified = excluded.github_last_modified,
               github_etag = excluded.github_etag,
+              github_last_full_refresh_at = excluded.github_last_full_refresh_at,
               github_poll_interval_seconds = excluded.github_poll_interval_seconds,
               last_success_at = excluded.last_success_at,
               last_error = excluded.last_error,
@@ -1190,7 +1200,10 @@ impl ReviewStore for SqliteStore {
                 sync_state.last_seen_slack_ts,
                 sync_state.github_last_modified,
                 sync_state.github_etag,
-                sync_state.github_poll_interval_seconds.map(|value| value as i64),
+                sync_state.github_last_full_refresh_at,
+                sync_state
+                    .github_poll_interval_seconds
+                    .map(|value| value as i64),
                 sync_state.last_success_at,
                 sync_state.last_error,
                 sync_state.consecutive_failures as i64,

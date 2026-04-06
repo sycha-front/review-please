@@ -242,12 +242,15 @@ fn run_dump(format: &str) -> Result<()> {
 
 fn run_sync_once() -> Result<()> {
     let config = AppConfig::load()?;
-    config.validate()?;
     let store = store()?;
     let credentials = credentials();
-    let slack = slack_provider(credentials.clone());
-    let github = github_provider(credentials);
-    let slack_outcome = slack_ingest::run(&config, store.clone(), slack, github.clone())?;
+    let github = github_provider(credentials.clone());
+    let slack_outcome = if config.validate().is_ok() {
+        let slack = slack_provider(credentials);
+        slack_ingest::run(&config, store.clone(), slack, github.clone())?
+    } else {
+        slack_ingest::SlackSyncOutcome::default()
+    };
     let github_outcome = github_events::run(&config, store.clone(), github)?;
     println!(
         "{}",

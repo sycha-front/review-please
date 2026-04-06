@@ -72,8 +72,13 @@ impl TrayController {
             true,
             None::<&str>,
         )?;
-        let clear_db_item =
-            MenuItem::with_id(app, MENU_CLEAR_DB_ID, "Clear Local DB Data", true, None::<&str>)?;
+        let clear_db_item = MenuItem::with_id(
+            app,
+            MENU_CLEAR_DB_ID,
+            "Clear Local DB Data",
+            true,
+            None::<&str>,
+        )?;
         let quit_item = MenuItem::with_id(app, MENU_QUIT_ID, "Quit", true, None::<&str>)?;
         let separator = PredefinedMenuItem::separator(app)?;
         let menu = Menu::with_items(

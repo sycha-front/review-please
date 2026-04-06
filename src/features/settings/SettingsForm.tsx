@@ -182,7 +182,7 @@ export function SettingsForm({
           }
         />
         <SettingsCheckboxField
-          label="나와 관련된 GitHub 새 소식만 보기"
+          label="직접 관련된 GitHub 새 소식만 보기"
           checked={form.githubRelatedUpdatesOnly}
           onChange={(value) => onFieldChange("githubRelatedUpdatesOnly", value)}
         />

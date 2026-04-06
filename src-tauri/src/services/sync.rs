@@ -161,7 +161,10 @@ impl LocalSyncCoordinator {
                     let body = if outcome.new_update_pr_keys.len() == 1 {
                         "새 소식 1건이 도착했어요.".to_string()
                     } else {
-                        format!("새 소식 {}건이 도착했어요.", outcome.new_update_pr_keys.len())
+                        format!(
+                            "새 소식 {}건이 도착했어요.",
+                            outcome.new_update_pr_keys.len()
+                        )
                     };
                     let _ = self.notifications.notify("review-please", &body);
                 }

@@ -24,8 +24,9 @@ pub fn update_activity_label(
     let is_my_pr = pr_author_login
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
-    if github_related_updates_only && !is_my_pr && !event.related_to_me {
-        return None;
+
+    if github_related_updates_only {
+        return update_directly_related_activity_label(event, is_my_pr);
     }
 
     match event.notification_reason.as_str() {
@@ -39,6 +40,29 @@ pub fn update_activity_label(
             && event.event_kind == EventKind::ChangesRequested.as_str() =>
         {
             Some("changes requested")
+        }
+        _ if is_my_pr
+            && !event.actor_is_me
+            && matches!(
+                event.event_kind.as_str(),
+                value if value == EventKind::Commented.as_str()
+                    || value == EventKind::ReviewCommented.as_str()
+            ) =>
+        {
+            Some("새 comment")
+        }
+        _ => None,
+    }
+}
+
+fn update_directly_related_activity_label(
+    event: &GithubEvent,
+    is_my_pr: bool,
+) -> Option<&'static str> {
+    match event.notification_reason.as_str() {
+        "mention" => Some("새 멘션"),
+        _ if is_my_pr && !event.actor_is_me && event.event_kind == EventKind::Approved.as_str() => {
+            Some("새 approve")
         }
         _ if is_my_pr
             && !event.actor_is_me
@@ -133,7 +157,7 @@ fn normalize_slack_username(value: &str) -> String {
 fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {
     if matches!(
         event.notification_reason.as_str(),
-        "review_requested" | "mention" | "team_mention"
+        "mention" | "team_mention"
     ) {
         return true;
     }
@@ -215,6 +239,49 @@ mod tests {
     }
 
     #[test]
+    fn keeps_github_review_request_as_pending() {
+        let pull = GithubPullRef {
+            owner: "owner".to_string(),
+            repo: "repo".to_string(),
+            number: 1,
+        };
+        let request = ReviewRequest::new_github_review_request(
+            &pull,
+            "PR".to_string(),
+            Some("author".to_string()),
+            None,
+            "1".to_string(),
+            "GitHub에서 리뷰 요청이 왔습니다.".to_string(),
+        );
+
+        let events = vec![GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: request.pr_key.clone(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: Some("author".to_string()),
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "review_requested".to_string(),
+            event_kind: "unknown".to_string(),
+            actor_login: None,
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        }];
+
+        assert_eq!(
+            classify_review_request(&request, &events, "sample-dev", "", "review-bot")
+                .map(|value| value.as_str().to_string()),
+            Some("pending".to_string())
+        );
+    }
+
+    #[test]
     fn identifies_visible_update_notifications() {
         let event = GithubEvent {
             id: "event-1".to_string(),
@@ -262,6 +329,174 @@ mod tests {
             actor_login: Some("reviewer".to_string()),
             actor_is_me: false,
             related_to_me: false,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("other"), true),
+            None
+        );
+    }
+
+    #[test]
+    fn keeps_direct_mentions_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "mention".to_string(),
+            event_kind: "commented".to_string(),
+            actor_login: Some("reviewer".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("other"), true),
+            Some("새 멘션")
+        );
+    }
+
+    #[test]
+    fn hides_team_mentions_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "team_mention".to_string(),
+            event_kind: "commented".to_string(),
+            actor_login: Some("reviewer".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("other"), true),
+            None
+        );
+    }
+
+    #[test]
+    fn keeps_my_pr_approvals_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "author".to_string(),
+            event_kind: "approved".to_string(),
+            actor_login: Some("reviewer".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("sample-dev"), true),
+            Some("새 approve")
+        );
+    }
+
+    #[test]
+    fn keeps_my_pr_comments_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "author".to_string(),
+            event_kind: "review_commented".to_string(),
+            actor_login: Some("reviewer".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("sample-dev"), true),
+            Some("새 comment")
+        );
+    }
+
+    #[test]
+    fn hides_changes_requested_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "author".to_string(),
+            event_kind: "changes_requested".to_string(),
+            actor_login: Some("reviewer".to_string()),
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("sample-dev"), true),
+            None
+        );
+    }
+
+    #[test]
+    fn hides_review_requested_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "review_requested".to_string(),
+            event_kind: "unknown".to_string(),
+            actor_login: None,
+            actor_is_me: false,
+            related_to_me: true,
             event_at: "2026-03-23T00:00:00Z".to_string(),
             payload_json: "{}".to_string(),
             created_at: "2026-03-23T00:00:00Z".to_string(),

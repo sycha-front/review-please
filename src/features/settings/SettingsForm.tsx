@@ -54,7 +54,7 @@ export function SettingsForm({
   return (
     <form onSubmit={onSubmit} className={s.form}>
       <H1>설정</H1>
-      <div className={cn(s.label)}>
+      <div className={s.label}>
         Slack 연결
         <div className={s.authCard}>
           <Button
@@ -113,6 +113,21 @@ export function SettingsForm({
         placeholder="@my-name, team-review"
         description="콤마(,)로 구분해서 여러 키워드를 입력할 수 있어요."
         onChange={(value) => onFieldChange("slackMentionKeyword", value)}
+        inputNodes={[
+          <Button
+            value={form.slackKeywordMatchMode}
+            color={form.slackKeywordMatchMode === "or" ? "secondary" : ""}
+            className={s.input}
+            onClick={(e) =>
+              onFieldChange(
+                "slackKeywordMatchMode",
+                e.currentTarget.value === "or" ? "and" : "or",
+              )
+            }
+          >
+            {form.slackKeywordMatchMode === "or" ? "OR" : "AND"}
+          </Button>,
+        ]}
       />
 
       <SettingsTextField
@@ -159,6 +174,13 @@ export function SettingsForm({
         />
       </div>
       <div className={s.checkboxes}>
+        <SettingsCheckboxField
+          label="GitHub 리뷰요청을 대기 중에 추가"
+          checked={form.githubReviewRequestsEnabled}
+          onChange={(value) =>
+            onFieldChange("githubReviewRequestsEnabled", value)
+          }
+        />
         <SettingsCheckboxField
           label="리뷰 대기 중인 PR이 생겼을 때 알림"
           checked={form.notifyOnNewPending}

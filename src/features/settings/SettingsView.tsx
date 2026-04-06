@@ -11,11 +11,13 @@ import i from "../../styles/index.module.css";
 
 const DIRTY_CHECK_FIELDS = [
   "slackMentionKeyword",
+  "slackKeywordMatchMode",
   "slackUsername",
   "lookbackDays",
   "slackPollIntervalSeconds",
   "githubMinPollIntervalSeconds",
   "doneMenuLimit",
+  "githubReviewRequestsEnabled",
   "notifyOnNewPending",
   "notifyOnNewUpdates",
   "notifyOnDone",

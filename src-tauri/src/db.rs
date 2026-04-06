@@ -24,6 +24,7 @@ pub trait ReviewStore: Send + Sync {
     fn init_schema(&self) -> Result<()>;
     fn clear_state(&self) -> Result<()>;
     fn prune_history(&self, lookback_days: u64) -> Result<()>;
+    fn github_event_count(&self) -> Result<u64>;
     fn upsert_review_request(&self, request: &ReviewRequest) -> Result<bool>;
     fn update_review_request_deadline(
         &self,
@@ -61,6 +62,7 @@ pub trait ReviewStore: Send + Sync {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        github_related_updates_only: bool,
         slack_user_id: &str,
         slack_username: &str,
     ) -> Result<ReviewDump>;
@@ -288,6 +290,7 @@ impl SqliteStore {
         requests: &[ReviewRequest],
         events: &[GithubEvent],
         github_username: &str,
+        github_related_updates_only: bool,
     ) -> Vec<UpdateFeedItem> {
         let mut requests_by_pr = HashMap::new();
         for request in requests {
@@ -299,7 +302,12 @@ impl SqliteStore {
         let items = events
             .iter()
             .filter_map(|event| {
-                build_update_feed_item(event, requests_by_pr.get(&event.pr_key), github_username)
+                build_update_feed_item(
+                    event,
+                    requests_by_pr.get(&event.pr_key),
+                    github_username,
+                    github_related_updates_only,
+                )
             })
             .collect::<Vec<_>>();
 
@@ -363,8 +371,7 @@ impl SqliteStore {
         connection.execute(
             r#"
             DELETE FROM github_events
-            WHERE event_at < ?1
-               OR pr_key NOT IN (SELECT DISTINCT pr_key FROM review_requests);
+            WHERE event_at < ?1;
             "#,
             params![github_cutoff],
         )?;
@@ -484,11 +491,17 @@ fn build_update_feed_item(
     event: &GithubEvent,
     request: Option<&ReviewRequest>,
     github_username: &str,
+    github_related_updates_only: bool,
 ) -> Option<UpdateFeedItem> {
     let pr_author_login = request
         .and_then(|value| value.pr_author_login.as_deref())
         .or(event.pr_author_login.as_deref());
-    let activity_label = update_activity_label(event, github_username, pr_author_login)?;
+    let activity_label = update_activity_label(
+        event,
+        github_username,
+        pr_author_login,
+        github_related_updates_only,
+    )?;
     let is_my_pr = pr_author_login
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
@@ -768,6 +781,13 @@ impl ReviewStore for SqliteStore {
     fn prune_history(&self, lookback_days: u64) -> Result<()> {
         let connection = self.connection()?;
         self.prune_history_with_connection(&connection, lookback_days)
+    }
+
+    fn github_event_count(&self) -> Result<u64> {
+        let connection = self.connection()?;
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM github_events;", [], |row| row.get(0))?;
+        Ok(count as u64)
     }
 
     fn upsert_review_request(&self, request: &ReviewRequest) -> Result<bool> {
@@ -1185,6 +1205,7 @@ impl ReviewStore for SqliteStore {
         status: &str,
         last_error: Option<String>,
         github_username: &str,
+        github_related_updates_only: bool,
         slack_user_id: &str,
         slack_username: &str,
     ) -> Result<ReviewDump> {
@@ -1192,7 +1213,12 @@ impl ReviewStore for SqliteStore {
         let (pending, mut done, update, all_events) =
             self.categorized_requests(&connection, github_username, slack_user_id, slack_username)?;
         let all_requests = self.fetch_review_requests(&connection)?;
-        let update_feed = self.build_update_feed(&all_requests, &all_events, github_username);
+        let update_feed = self.build_update_feed(
+            &all_requests,
+            &all_events,
+            github_username,
+            github_related_updates_only,
+        );
         let slack_sync = integration_status_from_sync_state(
             self.get_sync_state_with_connection(&connection, "slack_search")?,
         );
@@ -1380,7 +1406,7 @@ mod tests {
 
         store.prune_history(7)?;
 
-        let dump = store.dump(10, "OK", None, "me", "", "")?;
+        let dump = store.dump(10, "OK", None, "me", false, "", "")?;
         assert_eq!(dump.pending.len(), 1);
         assert!(dump
             .pending
@@ -1390,6 +1416,41 @@ mod tests {
             .recent_events
             .iter()
             .all(|event| event.id == "event-recent"));
+        Ok(())
+    }
+
+    #[test]
+    fn keeps_recent_github_events_without_review_requests() -> Result<()> {
+        let store = SqliteStore::new(temp_db_path("keep-github-only-events"))?;
+        store.init_schema()?;
+
+        let event = GithubEvent {
+            id: "event-recent".to_string(),
+            pr_key: "owner/repo#99".to_string(),
+            pr_title: Some("PR".to_string()),
+            repo_owner: Some("owner".to_string()),
+            repo_name: Some("repo".to_string()),
+            pr_number: Some(99),
+            pr_author_login: Some("someone".to_string()),
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "review_requested".to_string(),
+            event_kind: "unknown".to_string(),
+            actor_login: None,
+            actor_is_me: false,
+            related_to_me: true,
+            event_at: (Utc::now() - ChronoDuration::days(1)).to_rfc3339(),
+            payload_json: "{}".to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            read_at: None,
+        };
+
+        store.upsert_github_event(&event)?;
+        store.prune_history(7)?;
+
+        assert_eq!(store.github_event_count()?, 1);
+        let dump = store.dump(10, "OK", None, "me", false, "", "")?;
+        assert_eq!(dump.recent_events.len(), 1);
+        assert_eq!(dump.recent_events[0].id, "event-recent");
         Ok(())
     }
 
@@ -1434,7 +1495,7 @@ mod tests {
         );
         assert!(!store.upsert_review_request(&second)?);
 
-        let dump = store.dump(10, "OK", None, "me", "", "")?;
+        let dump = store.dump(10, "OK", None, "me", false, "", "")?;
         assert_eq!(dump.pending.len(), 1);
 
         let pending = &dump.pending[0];
@@ -1491,7 +1552,7 @@ mod tests {
         );
         assert!(store.upsert_review_request(&second)?);
 
-        let dump = store.dump(10, "OK", None, "me", "", "")?;
+        let dump = store.dump(10, "OK", None, "me", false, "", "")?;
         assert_eq!(dump.pending.len(), 1);
         assert_eq!(dump.done.len(), 1);
         assert_eq!(dump.pending[0].id, second.id);

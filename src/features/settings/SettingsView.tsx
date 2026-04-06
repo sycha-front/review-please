@@ -18,6 +18,7 @@ const DIRTY_CHECK_FIELDS = [
   "githubMinPollIntervalSeconds",
   "doneMenuLimit",
   "githubReviewRequestsEnabled",
+  "githubRelatedUpdatesOnly",
   "notifyOnNewPending",
   "notifyOnNewUpdates",
   "notifyOnDone",

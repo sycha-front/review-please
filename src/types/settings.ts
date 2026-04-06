@@ -10,6 +10,7 @@ export type SettingsPayload = {
   githubMinPollIntervalSeconds: number;
   doneMenuLimit: number;
   githubReviewRequestsEnabled: boolean;
+  githubRelatedUpdatesOnly: boolean;
   notifyOnNewPending: boolean;
   notifyOnNewUpdates: boolean;
   notifyOnDone: boolean;

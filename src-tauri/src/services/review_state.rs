@@ -10,6 +10,7 @@ pub fn update_activity_label(
     event: &GithubEvent,
     github_username: &str,
     pr_author_login: Option<&str>,
+    github_related_updates_only: bool,
 ) -> Option<&'static str> {
     if event
         .actor_login
@@ -23,6 +24,9 @@ pub fn update_activity_label(
     let is_my_pr = pr_author_login
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
+    if github_related_updates_only && !is_my_pr && !event.related_to_me {
+        return None;
+    }
 
     match event.notification_reason.as_str() {
         "review_requested" => Some("새 리뷰 요청"),
@@ -233,10 +237,41 @@ mod tests {
         };
 
         assert_eq!(
-            update_activity_label(&event, "sample-dev", Some("sample-dev")),
+            update_activity_label(&event, "sample-dev", Some("sample-dev"), false),
             Some("새 comment")
         );
-        assert_eq!(update_activity_label(&event, "sample-dev", Some("other")), None);
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("other"), false),
+            None
+        );
+    }
+
+    #[test]
+    fn hides_unrelated_updates_when_related_only_mode_is_enabled() {
+        let event = GithubEvent {
+            id: "event-1".to_string(),
+            pr_key: "owner/repo#1".to_string(),
+            pr_title: None,
+            repo_owner: None,
+            repo_name: None,
+            pr_number: None,
+            pr_author_login: None,
+            notification_thread_id: "thread-1".to_string(),
+            notification_reason: "review_requested".to_string(),
+            event_kind: "commented".to_string(),
+            actor_login: Some("reviewer".to_string()),
+            actor_is_me: false,
+            related_to_me: false,
+            event_at: "2026-03-23T00:00:00Z".to_string(),
+            payload_json: "{}".to_string(),
+            created_at: "2026-03-23T00:00:00Z".to_string(),
+            read_at: None,
+        };
+
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("other"), true),
+            None
+        );
     }
 
     #[test]
@@ -261,7 +296,10 @@ mod tests {
             read_at: None,
         };
 
-        assert_eq!(update_activity_label(&event, "sample-dev", Some("sample-dev")), None);
+        assert_eq!(
+            update_activity_label(&event, "sample-dev", Some("sample-dev"), false),
+            None
+        );
     }
 
     #[test]

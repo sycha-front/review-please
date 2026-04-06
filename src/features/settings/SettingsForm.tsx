@@ -182,6 +182,11 @@ export function SettingsForm({
           }
         />
         <SettingsCheckboxField
+          label="나와 관련된 GitHub 새 소식만 보기"
+          checked={form.githubRelatedUpdatesOnly}
+          onChange={(value) => onFieldChange("githubRelatedUpdatesOnly", value)}
+        />
+        <SettingsCheckboxField
           label="리뷰 대기 중인 PR이 생겼을 때 알림"
           checked={form.notifyOnNewPending}
           onChange={(value) => onFieldChange("notifyOnNewPending", value)}

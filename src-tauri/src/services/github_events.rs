@@ -63,8 +63,14 @@ pub fn run(
     store.prune_history(config.lookback_days)?;
     let sync_state = store.get_sync_state(GITHUB_SYNC_SOURCE)?;
     let mut tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
-    let poll_result = github_provider
+    let mut poll_result = github_provider
         .fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
+    if poll_result.not_modified && store.github_event_count()? == 0 {
+        // Recover from an empty local cache even when GitHub says nothing changed
+        // since the last conditional request.
+        poll_result = github_provider
+            .fetch_notifications(&SyncState::new(GITHUB_SYNC_SOURCE), config.github_min_poll_interval_seconds)?;
+    }
 
     let mut next_state = SyncState::new(GITHUB_SYNC_SOURCE);
     next_state.last_polled_at = Some(utc_now_string());
@@ -168,6 +174,7 @@ pub fn run(
                         .as_ref()
                         .and_then(|value| value.author_login.as_deref())
                         .or(event.pr_author_login.as_deref()),
+                    config.github_related_updates_only,
                 )
                 .is_some()
                 && !outcome.new_update_pr_keys.contains(&event.pr_key)

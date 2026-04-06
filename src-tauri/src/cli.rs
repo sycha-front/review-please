@@ -232,6 +232,7 @@ fn run_dump(format: &str) -> Result<()> {
         "OK",
         store.last_error_message()?,
         &config.github_username,
+        config.github_related_updates_only,
         &config.slack_user_id,
         &config.slack_username,
     )?;

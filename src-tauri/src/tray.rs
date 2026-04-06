@@ -27,6 +27,7 @@ const MENU_SYNC_NOW_ID: &str = "sync_now";
 const MENU_SETTINGS_ID: &str = "settings";
 const MENU_SHOW_LAST_ERROR_ID: &str = "show_last_error";
 const MENU_OPEN_DATA_DIR_ID: &str = "open_data_dir";
+const MENU_CLEAR_DB_ID: &str = "clear_db";
 const MENU_QUIT_ID: &str = "quit";
 
 pub struct TrayController {
@@ -71,6 +72,8 @@ impl TrayController {
             true,
             None::<&str>,
         )?;
+        let clear_db_item =
+            MenuItem::with_id(app, MENU_CLEAR_DB_ID, "Clear Local DB Data", true, None::<&str>)?;
         let quit_item = MenuItem::with_id(app, MENU_QUIT_ID, "Quit", true, None::<&str>)?;
         let separator = PredefinedMenuItem::separator(app)?;
         let menu = Menu::with_items(
@@ -85,6 +88,7 @@ impl TrayController {
                 &sync_now_item,
                 &show_last_error_item,
                 &open_data_dir_item,
+                &clear_db_item,
                 &quit_item,
             ],
         )?;
@@ -237,6 +241,12 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Resul
         MENU_OPEN_DATA_DIR_ID => {
             state.tray.open_data_dir()?;
         }
+        MENU_CLEAR_DB_ID => {
+            if confirm_clear_db()? {
+                state.store.clear_state()?;
+                state.coordinator.refresh_tray()?;
+            }
+        }
         MENU_QUIT_ID => {
             state.mark_quitting();
             app.exit(0);
@@ -244,4 +254,17 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: &MenuEvent) -> Resul
         _ => {}
     }
     Ok(())
+}
+
+fn confirm_clear_db() -> Result<bool> {
+    let script = r#"display dialog "로컬 DB 데이터를 모두 삭제할까요? 설정과 토큰은 유지되고, 수집된 대기 중/완료/새 소식 데이터만 초기화됩니다." with title "review-please" buttons {"취소", "삭제"} default button "삭제" cancel button "취소""#;
+    let output = Command::new("osascript")
+        .args(["-e", script])
+        .output()
+        .context("failed to show clear-db confirmation")?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.contains("삭제"))
 }

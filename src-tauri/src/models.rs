@@ -134,6 +134,41 @@ impl ReviewRequest {
             updated_at: now,
         }
     }
+
+    pub fn new_github_review_request(
+        pull: &GithubPullRef,
+        pr_title: String,
+        pr_author_login: Option<String>,
+        pr_merged_at: Option<String>,
+        review_requested_at_ts: String,
+        slack_text: String,
+    ) -> Self {
+        let now = utc_now_string();
+        Self {
+            id: Uuid::new_v4().to_string(),
+            pr_key: pull.key(),
+            pr_url: pull.html_url(),
+            pr_title,
+            repo_owner: pull.owner.clone(),
+            repo_name: pull.repo.clone(),
+            pr_number: pull.number,
+            pr_author_login,
+            pr_merged_at,
+            requester_slack_user_id: String::new(),
+            requester_display_name: "GitHub 리뷰 요청".to_string(),
+            slack_channel_id: None,
+            slack_message_ts: review_requested_at_ts,
+            slack_permalink: None,
+            slack_text,
+            deadline_date: None,
+            status: ReviewStatus::Pending.as_str().to_string(),
+            is_status_manual: false,
+            completed_at: None,
+            completion_event_id: None,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

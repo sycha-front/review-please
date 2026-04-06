@@ -34,7 +34,6 @@ pub fn run(
     let sync_state = store.get_sync_state(SLACK_SYNC_SOURCE)?;
     let last_seen = sync_state.last_seen_slack_ts.as_deref();
     let mut outcome = SlackSyncOutcome::default();
-    let keywords = config.slack_mention_keywords();
     let after_clause = if config.lookback_days > 0 {
         Some(
             (Local::now() - Duration::days(config.lookback_days as i64))
@@ -47,13 +46,7 @@ pub fn run(
     let mut seen_messages = HashSet::new();
     let mut messages = Vec::new();
 
-    for keyword in keywords {
-        let query = if let Some(after) = &after_clause {
-            format!("{keyword} after:{after}")
-        } else {
-            keyword
-        };
-
+    for query in config.slack_search_queries(after_clause.as_deref()) {
         for message in slack_provider.search_messages(&query)? {
             let dedupe_key = format!(
                 "{}:{}:{}",

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::{
-    config::{self, AppConfig},
+    config::{self, AppConfig, SlackKeywordMatchMode},
     keychain::{
         CredentialStore, SecurityCredentialStore, GITHUB_TOKEN_ACCOUNT, SLACK_ACCESS_TOKEN_ACCOUNT,
         SLACK_TOKEN_ACCOUNT,
@@ -30,11 +30,13 @@ pub enum SlackAuthMode {
 #[serde(rename_all = "camelCase")]
 pub struct SettingsPayload {
     pub slack_mention_keyword: String,
+    pub slack_keyword_match_mode: String,
     pub slack_username: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
     pub done_menu_limit: usize,
+    pub github_review_requests_enabled: bool,
     pub notify_on_new_pending: bool,
     pub notify_on_new_updates: bool,
     pub notify_on_done: bool,
@@ -52,11 +54,13 @@ pub struct SettingsPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SaveSettingsPayload {
     pub slack_mention_keyword: String,
+    pub slack_keyword_match_mode: String,
     pub slack_username: String,
     pub lookback_days: u64,
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
     pub done_menu_limit: usize,
+    pub github_review_requests_enabled: bool,
     pub notify_on_new_pending: bool,
     pub notify_on_new_updates: bool,
     pub notify_on_done: bool,
@@ -182,11 +186,13 @@ fn build_settings_payload(
 
     Ok(SettingsPayload {
         slack_mention_keyword: config.slack_mention_keyword.clone(),
+        slack_keyword_match_mode: config.slack_keyword_match_mode.as_str().to_string(),
         slack_username: config.slack_username.clone(),
         lookback_days: config.lookback_days,
         slack_poll_interval_seconds: config.slack_poll_interval_seconds,
         github_min_poll_interval_seconds: config.github_min_poll_interval_seconds,
         done_menu_limit: config.done_menu_limit,
+        github_review_requests_enabled: config.github_review_requests_enabled,
         notify_on_new_pending: config.notify_on_new_pending,
         notify_on_new_updates: config.notify_on_new_updates,
         notify_on_done: config.notify_on_done,
@@ -450,6 +456,10 @@ pub fn save_settings(
     // OAuth-derived Slack identity fields are preserved here and only refreshed by Slack OAuth.
     let config = AppConfig {
         slack_mention_keyword: payload.slack_mention_keyword.trim().to_string(),
+        slack_keyword_match_mode: match payload.slack_keyword_match_mode.trim() {
+            "and" => SlackKeywordMatchMode::And,
+            _ => SlackKeywordMatchMode::Or,
+        },
         slack_username: payload.slack_username.trim().to_string(),
         slack_user_id: existing.slack_user_id,
         slack_team_id: existing.slack_team_id,
@@ -460,6 +470,7 @@ pub fn save_settings(
         slack_poll_interval_seconds: payload.slack_poll_interval_seconds,
         github_min_poll_interval_seconds: payload.github_min_poll_interval_seconds,
         done_menu_limit: payload.done_menu_limit,
+        github_review_requests_enabled: payload.github_review_requests_enabled,
         notify_on_new_pending: payload.notify_on_new_pending,
         notify_on_new_updates: payload.notify_on_new_updates,
         notify_on_done: payload.notify_on_done,

@@ -12,11 +12,34 @@ const LEGACY_APP_SUPPORT_DIR: &str = "Library/Application Support/pr-please";
 pub const DEFAULT_SLACK_AUTH_SERVICE_URL: &str =
     "https://review-please-slack-auth.pepprbell.workers.dev";
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SlackKeywordMatchMode {
+    Or,
+    And,
+}
+
+impl Default for SlackKeywordMatchMode {
+    fn default() -> Self {
+        Self::Or
+    }
+}
+
+impl SlackKeywordMatchMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Or => "or",
+            Self::And => "and",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     // These values are the user-editable settings we persist locally.
     pub slack_mention_keyword: String,
+    pub slack_keyword_match_mode: SlackKeywordMatchMode,
     pub slack_username: String,
     pub slack_user_id: String,
     pub slack_team_id: String,
@@ -27,6 +50,7 @@ pub struct AppConfig {
     pub slack_poll_interval_seconds: u64,
     pub github_min_poll_interval_seconds: u64,
     pub done_menu_limit: usize,
+    pub github_review_requests_enabled: bool,
     pub notify_on_new_pending: bool,
     pub notify_on_new_updates: bool,
     pub notify_on_done: bool,
@@ -38,6 +62,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             slack_mention_keyword: String::new(),
+            slack_keyword_match_mode: SlackKeywordMatchMode::Or,
             slack_username: String::new(),
             slack_user_id: String::new(),
             slack_team_id: String::new(),
@@ -48,6 +73,7 @@ impl Default for AppConfig {
             slack_poll_interval_seconds: 120,
             github_min_poll_interval_seconds: 60,
             done_menu_limit: 10,
+            github_review_requests_enabled: false,
             notify_on_new_pending: true,
             notify_on_new_updates: true,
             notify_on_done: false,
@@ -104,6 +130,26 @@ impl AppConfig {
             .map(str::to_string)
             .collect()
     }
+
+    pub fn slack_search_queries(&self, after_clause: Option<&str>) -> Vec<String> {
+        let keywords = self.slack_mention_keywords();
+        if keywords.is_empty() {
+            return Vec::new();
+        }
+
+        let raw_queries = match self.slack_keyword_match_mode {
+            SlackKeywordMatchMode::Or => keywords,
+            SlackKeywordMatchMode::And => vec![keywords.join(" ")],
+        };
+
+        raw_queries
+            .into_iter()
+            .map(|query| match after_clause {
+                Some(after) => format!("{query} after:{after}"),
+                None => query,
+            })
+            .collect()
+    }
 }
 
 pub fn ensure_data_dir() -> Result<PathBuf> {
@@ -155,6 +201,12 @@ pub fn config_from_dotenv() -> Result<AppConfig> {
     if let Some(value) = values.get("SLACK_MENTION_KEYWORD") {
         config.slack_mention_keyword = value.clone();
     }
+    if let Some(value) = values.get("SLACK_KEYWORD_MATCH_MODE") {
+        config.slack_keyword_match_mode = match value.trim().to_lowercase().as_str() {
+            "and" => SlackKeywordMatchMode::And,
+            _ => SlackKeywordMatchMode::Or,
+        };
+    }
     if let Some(value) = values.get("SLACK_USERNAME") {
         config.slack_username = value.clone();
     }
@@ -180,6 +232,39 @@ pub fn config_from_dotenv() -> Result<AppConfig> {
         config.lookback_days = value;
     }
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, SlackKeywordMatchMode};
+
+    #[test]
+    fn builds_or_queries_per_keyword() {
+        let config = AppConfig {
+            slack_mention_keyword: "@one, @two".to_string(),
+            slack_keyword_match_mode: SlackKeywordMatchMode::Or,
+            ..AppConfig::default()
+        };
+
+        assert_eq!(
+            config.slack_search_queries(Some("2026-04-01")),
+            vec!["@one after:2026-04-01", "@two after:2026-04-01"]
+        );
+    }
+
+    #[test]
+    fn builds_and_query_as_single_search() {
+        let config = AppConfig {
+            slack_mention_keyword: "@one, @two".to_string(),
+            slack_keyword_match_mode: SlackKeywordMatchMode::And,
+            ..AppConfig::default()
+        };
+
+        assert_eq!(
+            config.slack_search_queries(Some("2026-04-01")),
+            vec!["@one @two after:2026-04-01"]
+        );
+    }
 }
 
 pub fn data_dir() -> Result<PathBuf> {

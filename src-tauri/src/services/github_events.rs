@@ -1,11 +1,12 @@
 use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 
 use crate::{
     config::AppConfig,
     db::ReviewStore,
-    models::{utc_now_string, SyncState},
+    models::{utc_now_string, GithubNotificationThread, GithubPullRef, PullRequestMetadata, ReviewRequest, SyncState},
     providers::{github::is_access_denied_error, GithubProvider},
     services::review_state::{should_mark_done, update_activity_label},
 };
@@ -14,9 +15,44 @@ pub const GITHUB_SYNC_SOURCE: &str = "github_notifications";
 
 #[derive(Debug, Default)]
 pub struct GithubSyncOutcome {
+    pub new_pending_count: u64,
     pub completed_request_count: u64,
     pub completed_pr_keys: Vec<String>,
     pub new_update_pr_keys: Vec<String>,
+}
+
+fn notification_updated_ts(thread: &GithubNotificationThread) -> String {
+    thread
+        .updated_at
+        .as_deref()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| format!("{}.000000", value.with_timezone(&Utc).timestamp()))
+        .unwrap_or_else(|| format!("{}.000000", Utc::now().timestamp()))
+}
+
+fn build_github_review_request(
+    thread: &GithubNotificationThread,
+    pull: &GithubPullRef,
+    metadata: Option<&PullRequestMetadata>,
+) -> ReviewRequest {
+    let pr_title = metadata
+        .map(|value| value.title.clone())
+        .or_else(|| thread.subject_title.clone())
+        .unwrap_or_else(|| pull.key());
+    let summary = if let Some(title) = &thread.subject_title {
+        format!("GitHub에서 리뷰 요청이 왔습니다.\n{title}")
+    } else {
+        "GitHub에서 리뷰 요청이 왔습니다.".to_string()
+    };
+
+    ReviewRequest::new_github_review_request(
+        pull,
+        pr_title,
+        metadata.and_then(|value| value.author_login.clone()),
+        metadata.and_then(|value| value.merged_at.clone()),
+        notification_updated_ts(thread),
+        summary,
+    )
 }
 
 pub fn run(
@@ -26,7 +62,7 @@ pub fn run(
 ) -> Result<GithubSyncOutcome> {
     store.prune_history(config.lookback_days)?;
     let sync_state = store.get_sync_state(GITHUB_SYNC_SOURCE)?;
-    let tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
+    let mut tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
     let poll_result = github_provider
         .fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
 
@@ -77,6 +113,18 @@ pub fn run(
                 None
             }
         };
+        let mut created_pending_from_github = false;
+        if config.github_review_requests_enabled
+            && thread.reason == "review_requested"
+            && !tracked.contains(&pull.key())
+        {
+            let request = build_github_review_request(&thread, pull, metadata.as_ref());
+            if store.upsert_review_request(&request)? {
+                outcome.new_pending_count += 1;
+                created_pending_from_github = true;
+            }
+            tracked.insert(pull.key());
+        }
         let since = store.latest_event_at_for_pr(&pull.key())?;
         let is_my_pr = metadata
             .as_ref()
@@ -112,6 +160,7 @@ pub fn run(
             }
             let inserted = store.upsert_github_event(&event)?;
             if inserted
+                && !(created_pending_from_github && event.notification_reason == "review_requested")
                 && update_activity_label(
                     &event,
                     &current_user_login,
@@ -146,4 +195,59 @@ pub fn run(
     next_state.last_success_at = next_state.last_polled_at.clone();
     store.save_sync_state(&next_state)?;
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::{GithubNotificationThread, GithubPullRef, PullRequestMetadata};
+
+    use super::{build_github_review_request, notification_updated_ts};
+
+    #[test]
+    fn builds_pending_request_from_github_review_notification() {
+        let thread = GithubNotificationThread {
+            id: "thread-1".to_string(),
+            unread: true,
+            last_read_at: None,
+            reason: "review_requested".to_string(),
+            subject_type: "PullRequest".to_string(),
+            subject_title: Some("Feature PR".to_string()),
+            pull: Some(GithubPullRef {
+                owner: "owner".to_string(),
+                repo: "repo".to_string(),
+                number: 42,
+            }),
+            updated_at: Some("2026-04-06T02:30:00Z".to_string()),
+        };
+        let pull = thread.pull.clone().expect("pull");
+        let metadata = PullRequestMetadata {
+            title: "Actual PR title".to_string(),
+            author_login: Some("author".to_string()),
+            merged_at: None,
+        };
+
+        let request = build_github_review_request(&thread, &pull, Some(&metadata));
+
+        assert_eq!(request.pr_key, "owner/repo#42");
+        assert_eq!(request.pr_title, "Actual PR title");
+        assert_eq!(request.requester_display_name, "GitHub 리뷰 요청");
+        assert_eq!(request.slack_message_ts, "1775442600.000000");
+        assert!(request.slack_text.contains("GitHub에서 리뷰 요청이 왔습니다."));
+    }
+
+    #[test]
+    fn converts_notification_timestamp_to_sortable_request_timestamp() {
+        let thread = GithubNotificationThread {
+            id: "thread-1".to_string(),
+            unread: true,
+            last_read_at: None,
+            reason: "review_requested".to_string(),
+            subject_type: "PullRequest".to_string(),
+            subject_title: None,
+            pull: None,
+            updated_at: Some("2026-04-06T02:30:00Z".to_string()),
+        };
+
+        assert_eq!(notification_updated_ts(&thread), "1775442600.000000");
+    }
 }

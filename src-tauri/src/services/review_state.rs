@@ -2,6 +2,10 @@ use chrono::{Local, NaiveDate};
 
 use crate::models::{EventKind, GithubEvent, ReviewRequest, ReviewStatus};
 
+const REVIEW_REQUEST_REASON: &str = "review_requested";
+const MENTION_REASON: &str = "mention";
+const TEAM_MENTION_REASON: &str = "team_mention";
+
 pub fn is_bot_login(login: &str) -> bool {
     login.contains("[bot]")
 }
@@ -30,28 +34,9 @@ pub fn update_activity_label(
     }
 
     match event.notification_reason.as_str() {
-        "review_requested" => Some("새 리뷰 요청"),
-        "mention" | "team_mention" => Some("새 멘션"),
-        _ if is_my_pr && !event.actor_is_me && event.event_kind == EventKind::Approved.as_str() => {
-            Some("새 approve")
-        }
-        _ if is_my_pr
-            && !event.actor_is_me
-            && event.event_kind == EventKind::ChangesRequested.as_str() =>
-        {
-            Some("changes requested")
-        }
-        _ if is_my_pr
-            && !event.actor_is_me
-            && matches!(
-                event.event_kind.as_str(),
-                value if value == EventKind::Commented.as_str()
-                    || value == EventKind::ReviewCommented.as_str()
-            ) =>
-        {
-            Some("새 comment")
-        }
-        _ => None,
+        REVIEW_REQUEST_REASON => Some("새 리뷰 요청"),
+        MENTION_REASON | TEAM_MENTION_REASON => Some("새 멘션"),
+        _ => reviewer_activity_label(event, is_my_pr, true),
     }
 }
 
@@ -60,21 +45,8 @@ fn update_directly_related_activity_label(
     is_my_pr: bool,
 ) -> Option<&'static str> {
     match event.notification_reason.as_str() {
-        "mention" => Some("새 멘션"),
-        _ if is_my_pr && !event.actor_is_me && event.event_kind == EventKind::Approved.as_str() => {
-            Some("새 approve")
-        }
-        _ if is_my_pr
-            && !event.actor_is_me
-            && matches!(
-                event.event_kind.as_str(),
-                value if value == EventKind::Commented.as_str()
-                    || value == EventKind::ReviewCommented.as_str()
-            ) =>
-        {
-            Some("새 comment")
-        }
-        _ => None,
+        MENTION_REASON => Some("새 멘션"),
+        _ => reviewer_activity_label(event, is_my_pr, false),
     }
 }
 
@@ -113,9 +85,7 @@ pub fn classify_review_request(
         .as_deref()
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
-    let has_my_approval = events
-        .iter()
-        .any(|event| event.actor_is_me && event.event_kind == EventKind::Approved.as_str());
+    let has_my_approval = events.iter().any(is_my_approval_event);
     let is_merged = request.pr_merged_at.is_some();
     let overdue_by_three_days = request
         .deadline_date
@@ -127,13 +97,10 @@ pub fn classify_review_request(
     if overdue_by_three_days || has_my_approval || is_merged {
         return Some(ReviewStatus::Done);
     }
-
-    let has_update = events.iter().any(|event| is_update_event(event, is_my_pr));
-    if has_update {
+    if events.iter().any(|event| is_update_event(event, is_my_pr)) {
         return Some(ReviewStatus::Update);
     }
-
-    if !is_my_pr && !has_my_approval && !is_merged {
+    if !is_my_pr {
         return Some(ReviewStatus::Pending);
     }
 
@@ -154,22 +121,48 @@ fn normalize_slack_username(value: &str) -> String {
         .to_lowercase()
 }
 
+fn reviewer_activity_label(
+    event: &GithubEvent,
+    is_my_pr: bool,
+    include_changes_requested: bool,
+) -> Option<&'static str> {
+    if !is_my_pr || event.actor_is_me {
+        return None;
+    }
+    if event.event_kind == EventKind::Approved.as_str() {
+        return Some("새 approve");
+    }
+    if include_changes_requested && event.event_kind == EventKind::ChangesRequested.as_str() {
+        return Some("changes requested");
+    }
+    if is_comment_event_kind(&event.event_kind) {
+        return Some("새 comment");
+    }
+
+    None
+}
+
+fn is_my_approval_event(event: &GithubEvent) -> bool {
+    event.actor_is_me && event.event_kind == EventKind::Approved.as_str()
+}
+
+fn is_comment_event_kind(event_kind: &str) -> bool {
+    event_kind == EventKind::Commented.as_str()
+        || event_kind == EventKind::ReviewCommented.as_str()
+}
+
 fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {
     if matches!(
         event.notification_reason.as_str(),
-        "mention" | "team_mention"
+        MENTION_REASON | TEAM_MENTION_REASON
     ) {
         return true;
     }
 
     is_my_pr
         && !event.actor_is_me
-        && matches!(
-            event.event_kind.as_str(),
-            value if value == EventKind::Commented.as_str()
-                || value == EventKind::ReviewCommented.as_str()
-                || value == EventKind::ChangesRequested.as_str()
-        )
+        && (is_comment_event_kind(&event.event_kind)
+            || event.event_kind == EventKind::ChangesRequested.as_str())
 }
 
 #[cfg(test)]

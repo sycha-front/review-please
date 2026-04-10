@@ -74,6 +74,9 @@ pub fn run(
         if newer_ts(&message.ts, outcome.last_seen_slack_ts.as_deref()) {
             outcome.last_seen_slack_ts = Some(message.ts.clone());
         }
+        if !config.slack_text_matches_keywords(&message.text) {
+            continue;
+        }
         let pulls = extract_pull_requests(&message.text);
         if pulls.is_empty() {
             continue;

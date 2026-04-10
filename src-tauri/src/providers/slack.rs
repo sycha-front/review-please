@@ -10,6 +10,9 @@ use crate::{
     models::{GithubPullRef, SlackMessageRef},
 };
 
+const SEARCH_HIGHLIGHT_START: char = '\u{E000}';
+const SEARCH_HIGHLIGHT_END: char = '\u{E001}';
+
 pub fn extract_pull_requests(text: &str) -> Vec<GithubPullRef> {
     let regex =
         Regex::new(r"https://github\.com/([^/\s>]+)/([^/\s>]+)/pull/(\d+)").expect("valid regex");
@@ -122,6 +125,16 @@ fn weekday_index(value: Weekday) -> i64 {
     }
 }
 
+fn has_search_highlight_marker(text: &str) -> bool {
+    text.contains(SEARCH_HIGHLIGHT_START) && text.contains(SEARCH_HIGHLIGHT_END)
+}
+
+fn strip_search_highlight_markers(text: &str) -> String {
+    text.chars()
+        .filter(|char| *char != SEARCH_HIGHLIGHT_START && *char != SEARCH_HIGHLIGHT_END)
+        .collect()
+}
+
 pub struct LocalSlackProvider {
     credentials: Arc<dyn CredentialStore>,
 }
@@ -176,6 +189,7 @@ impl super::SlackProvider for LocalSlackProvider {
             "https://slack.com/api/search.messages",
             &[
                 ("query", keyword),
+                ("highlight", "true"),
                 ("sort", "timestamp"),
                 ("sort_dir", "desc"),
                 ("count", "100"),
@@ -195,10 +209,14 @@ impl super::SlackProvider for LocalSlackProvider {
             .matches
             .into_iter()
             .filter_map(|item| {
+                let text = item.text?;
+                if !has_search_highlight_marker(&text) {
+                    return None;
+                }
                 Some(SlackMessageRef {
                     ts: item.ts?,
                     channel_id: item.channel.and_then(|channel| channel.id),
-                    text: item.text.unwrap_or_default(),
+                    text: strip_search_highlight_markers(&text),
                     user_id: item.user?,
                 })
             })
@@ -298,7 +316,10 @@ struct PermalinkResponse {
 mod tests {
     use chrono::NaiveDate;
 
-    use super::{extract_deadline, extract_pull_requests, slack_ts_to_local_date};
+    use super::{
+        extract_deadline, extract_pull_requests, has_search_highlight_marker,
+        slack_ts_to_local_date, strip_search_highlight_markers,
+    };
 
     #[test]
     fn extracts_single_pull_request() {
@@ -312,6 +333,22 @@ mod tests {
         let text = "a https://github.com/openai/app/pull/12 and <https://github.com/openai/app/pull/13|link> and https://github.com/openai/app/pull/12";
         let pulls = extract_pull_requests(text);
         assert_eq!(pulls.len(), 2);
+    }
+
+    #[test]
+    fn detects_search_highlight_markers() {
+        assert!(has_search_highlight_marker(
+            "hello \u{E000}@front_timespread\u{E001}"
+        ));
+        assert!(!has_search_highlight_marker("hello @front_timespread"));
+    }
+
+    #[test]
+    fn strips_search_highlight_markers() {
+        assert_eq!(
+            strip_search_highlight_markers("hello \u{E000}@front_timespread\u{E001}"),
+            "hello @front_timespread"
+        );
     }
 
     #[test]

@@ -152,6 +152,18 @@ impl AppConfig {
             })
             .collect()
     }
+
+    pub fn slack_text_matches_keywords(&self, text: &str) -> bool {
+        let keywords = self.slack_mention_keywords();
+        if keywords.is_empty() {
+            return false;
+        }
+
+        match self.slack_keyword_match_mode {
+            SlackKeywordMatchMode::Or => keywords.iter().any(|keyword| text.contains(keyword)),
+            SlackKeywordMatchMode::And => keywords.iter().all(|keyword| text.contains(keyword)),
+        }
+    }
 }
 
 pub fn ensure_data_dir() -> Result<PathBuf> {
@@ -266,6 +278,30 @@ mod tests {
             config.slack_search_queries(Some("2026-04-01")),
             vec!["@one @two after:2026-04-01"]
         );
+    }
+
+    #[test]
+    fn matches_or_keywords_using_exact_substrings() {
+        let config = AppConfig {
+            slack_mention_keyword: "@front_timespread, @other".to_string(),
+            slack_keyword_match_mode: SlackKeywordMatchMode::Or,
+            ..AppConfig::default()
+        };
+
+        assert!(config.slack_text_matches_keywords("hello @front_timespread"));
+        assert!(!config.slack_text_matches_keywords("hello timespread"));
+    }
+
+    #[test]
+    fn matches_and_keywords_only_when_all_are_present() {
+        let config = AppConfig {
+            slack_mention_keyword: "@front_timespread, @review".to_string(),
+            slack_keyword_match_mode: SlackKeywordMatchMode::And,
+            ..AppConfig::default()
+        };
+
+        assert!(config.slack_text_matches_keywords("@front_timespread and @review"));
+        assert!(!config.slack_text_matches_keywords("@front_timespread only"));
     }
 }
 

@@ -50,11 +50,20 @@ fn access_denied_error(url: &str, status: u16) -> Error {
 }
 
 fn api_error(url: &str, status: u16, body: &str) -> Error {
-    anyhow!("GitHub API {} returned HTTP {}: {}", url, status, response_preview(body))
+    anyhow!(
+        "GitHub API {} returned HTTP {}: {}",
+        url,
+        status,
+        response_preview(body)
+    )
 }
 
 fn decode_error(url: &str, body: &str) -> String {
-    format!("failed to decode GitHub response from {}: {}", url, response_preview(body))
+    format!(
+        "failed to decode GitHub response from {}: {}",
+        url,
+        response_preview(body)
+    )
 }
 
 fn curl_error(url: &str, stderr: &[u8]) -> Error {
@@ -79,10 +88,7 @@ fn temp_header_path() -> PathBuf {
 
 fn header_name_value(line: &str) -> Option<(String, String)> {
     let (name, value) = line.split_once(':')?;
-    Some((
-        name.trim().to_ascii_lowercase(),
-        value.trim().to_string(),
-    ))
+    Some((name.trim().to_ascii_lowercase(), value.trim().to_string()))
 }
 
 fn collect_response_headers(headers_raw: &str) -> HashMap<String, String> {
@@ -174,7 +180,10 @@ fn read_at_for_thread(thread: &GithubNotificationThread) -> Option<String> {
     if thread.unread {
         None
     } else {
-        thread.last_read_at.clone().or_else(|| Some(utc_now_string()))
+        thread
+            .last_read_at
+            .clone()
+            .or_else(|| Some(utc_now_string()))
     }
 }
 
@@ -283,7 +292,9 @@ fn notification_poll_result(
     }
 }
 
-fn notification_thread_from_response(thread: NotificationThreadResponse) -> GithubNotificationThread {
+fn notification_thread_from_response(
+    thread: NotificationThreadResponse,
+) -> GithubNotificationThread {
     GithubNotificationThread {
         id: thread.id,
         unread: thread.unread,
@@ -559,6 +570,24 @@ impl super::GithubProvider for LocalGithubProvider {
             author_login: response.user.and_then(|user| user.login),
             merged_at: response.merged_at,
         })
+    }
+
+    fn fetch_latest_approval_event(
+        &self,
+        pull: &GithubPullRef,
+        current_user_login: &str,
+    ) -> Result<Option<GithubEvent>> {
+        let mut events = self.collect_review_events(
+            pull,
+            "approval_scan",
+            &format!("tracked-approval:{}", pull.key()),
+            None,
+            current_user_login,
+        )?;
+        events
+            .retain(|event| event.actor_is_me && event.event_kind == EventKind::Approved.as_str());
+        events.sort_by(|left, right| left.event_at.cmp(&right.event_at));
+        Ok(events.pop())
     }
 
     fn fetch_notifications(

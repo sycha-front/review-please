@@ -62,10 +62,6 @@ pub fn matches_slack_user_id(candidate: &str, slack_user_id: &str) -> bool {
     !candidate.is_empty() && candidate == slack_user_id
 }
 
-pub fn should_mark_done(event_kind: &str, actor_is_me: bool) -> bool {
-    actor_is_me && event_kind == EventKind::Approved.as_str()
-}
-
 pub fn classify_review_request(
     request: &ReviewRequest,
     events: &[GithubEvent],
@@ -147,8 +143,7 @@ fn is_my_approval_event(event: &GithubEvent) -> bool {
 }
 
 fn is_comment_event_kind(event_kind: &str) -> bool {
-    event_kind == EventKind::Commented.as_str()
-        || event_kind == EventKind::ReviewCommented.as_str()
+    event_kind == EventKind::Commented.as_str() || event_kind == EventKind::ReviewCommented.as_str()
 }
 
 fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {

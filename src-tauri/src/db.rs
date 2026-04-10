@@ -51,7 +51,7 @@ pub trait ReviewStore: Send + Sync {
     fn mark_requests_done_by_pr_key(
         &self,
         pr_key: &str,
-        completion_event_id: &str,
+        completion_event_id: Option<&str>,
         completed_at: &str,
     ) -> Result<u64>;
     fn get_sync_state(&self, source: &str) -> Result<SyncState>;
@@ -1130,7 +1130,7 @@ impl ReviewStore for SqliteStore {
     fn mark_requests_done_by_pr_key(
         &self,
         pr_key: &str,
-        completion_event_id: &str,
+        completion_event_id: Option<&str>,
         completed_at: &str,
     ) -> Result<u64> {
         let connection = self.connection()?;

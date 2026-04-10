@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -11,7 +14,7 @@ use crate::{
         NotificationsPollResult, PullRequestMetadata, ReviewRequest, SyncState,
     },
     providers::{github::is_access_denied_error, GithubProvider},
-    services::review_state::{should_mark_done, update_activity_label},
+    services::review_state::update_activity_label,
 };
 
 pub const GITHUB_SYNC_SOURCE: &str = "github_notifications";
@@ -88,6 +91,37 @@ fn push_unique_pr_key(keys: &mut Vec<String>, pr_key: &str) {
     if !keys.iter().any(|key| key == pr_key) {
         keys.push(pr_key.to_string());
     }
+}
+
+fn mark_done_from_metadata(
+    store: &dyn ReviewStore,
+    pull: &GithubPullRef,
+    metadata: &PullRequestMetadata,
+    outcome: &mut GithubSyncOutcome,
+) -> Result<()> {
+    let Some(merged_at) = metadata.merged_at.as_deref() else {
+        return Ok(());
+    };
+    let completed = store.mark_requests_done_by_pr_key(&pull.key(), None, merged_at)?;
+    if completed > 0 {
+        outcome.completed_request_count += completed;
+        push_unique_pr_key(&mut outcome.completed_pr_keys, &pull.key());
+    }
+    Ok(())
+}
+
+fn mark_done_from_approval_event(
+    store: &dyn ReviewStore,
+    event: &GithubEvent,
+    outcome: &mut GithubSyncOutcome,
+) -> Result<()> {
+    let completed =
+        store.mark_requests_done_by_pr_key(&event.pr_key, Some(&event.id), &event.event_at)?;
+    if completed > 0 {
+        outcome.completed_request_count += completed;
+        push_unique_pr_key(&mut outcome.completed_pr_keys, &event.pr_key);
+    }
+    Ok(())
 }
 
 fn is_review_requested_thread(thread: &GithubNotificationThread) -> bool {
@@ -193,6 +227,40 @@ fn fetch_thread_events(
     }
 }
 
+fn refresh_tracked_pr_metadata(
+    store: &dyn ReviewStore,
+    github_provider: &dyn GithubProvider,
+    tracked: &HashSet<String>,
+    current_user_login: &str,
+    outcome: &mut GithubSyncOutcome,
+) -> Result<HashMap<String, Option<PullRequestMetadata>>> {
+    let mut metadata_by_pr = HashMap::new();
+
+    for pr_key in tracked {
+        let Some(pull) = GithubPullRef::from_key(pr_key) else {
+            continue;
+        };
+        let metadata = match fetch_thread_metadata(github_provider, store, &pull)? {
+            ThreadMetadata::Skip => continue,
+            ThreadMetadata::Value(metadata) => metadata,
+        };
+        if let Some(metadata_value) = metadata.as_ref() {
+            mark_done_from_metadata(store, &pull, metadata_value, outcome)?;
+        }
+        if let Some(event) =
+            github_provider.fetch_latest_approval_event(&pull, current_user_login)?
+        {
+            let inserted = store.upsert_github_event(&event)?;
+            if inserted {
+                mark_done_from_approval_event(store, &event, outcome)?;
+            }
+        }
+        metadata_by_pr.insert(pr_key.clone(), metadata);
+    }
+
+    Ok(metadata_by_pr)
+}
+
 fn try_insert_review_request(
     config: &AppConfig,
     store: &dyn ReviewStore,
@@ -222,7 +290,6 @@ fn handle_event(
     config: &AppConfig,
     store: &dyn ReviewStore,
     current_user_login: &str,
-    tracked: &HashSet<String>,
     outcome: &mut GithubSyncOutcome,
     metadata: Option<&PullRequestMetadata>,
     created_pending_from_github: bool,
@@ -240,14 +307,6 @@ fn handle_event(
     ) {
         push_unique_pr_key(&mut outcome.new_update_pr_keys, &event.pr_key);
     }
-    if tracked.contains(&event.pr_key) && should_mark_done(&event.event_kind, event.actor_is_me) {
-        let completed =
-            store.mark_requests_done_by_pr_key(&event.pr_key, &event.id, &event.event_at)?;
-        if completed > 0 {
-            outcome.completed_request_count += completed;
-            push_unique_pr_key(&mut outcome.completed_pr_keys, &event.pr_key);
-        }
-    }
 
     Ok(())
 }
@@ -258,6 +317,7 @@ fn process_poll_result(
     github_provider: &dyn GithubProvider,
     current_user_login: &str,
     tracked: &mut HashSet<String>,
+    tracked_metadata: &HashMap<String, Option<PullRequestMetadata>>,
     outcome: &mut GithubSyncOutcome,
     poll_result: NotificationsPollResult,
 ) -> Result<()> {
@@ -265,9 +325,13 @@ fn process_poll_result(
         let Some(pull) = is_notification_pr_thread(&thread) else {
             continue;
         };
-        let metadata = match fetch_thread_metadata(github_provider, store, pull)? {
-            ThreadMetadata::Skip => continue,
-            ThreadMetadata::Value(metadata) => metadata,
+        let metadata = if let Some(metadata) = tracked_metadata.get(&pull.key()) {
+            metadata.clone()
+        } else {
+            match fetch_thread_metadata(github_provider, store, pull)? {
+                ThreadMetadata::Skip => continue,
+                ThreadMetadata::Value(metadata) => metadata,
+            }
         };
         let created_pending_from_github = try_insert_review_request(
             config,
@@ -278,6 +342,9 @@ fn process_poll_result(
             tracked,
             outcome,
         )?;
+        if let Some(metadata_value) = metadata.as_ref() {
+            mark_done_from_metadata(store, pull, metadata_value, outcome)?;
+        }
         let since = store.latest_event_at_for_pr(&pull.key())?;
         let include_comment_events = should_include_comment_events(
             store,
@@ -304,7 +371,6 @@ fn process_poll_result(
                 config,
                 store,
                 current_user_login,
-                tracked,
                 outcome,
                 metadata.as_ref(),
                 created_pending_from_github,
@@ -343,8 +409,17 @@ pub fn run(
     store.prune_history(config.lookback_days)?;
     let sync_state = store.get_sync_state(GITHUB_SYNC_SOURCE)?;
     let mut tracked: HashSet<String> = store.tracked_pr_keys()?.into_iter().collect();
+    let mut outcome = GithubSyncOutcome::default();
+    let current_user_login = github_provider.current_user_login()?;
     let mut poll_result = github_provider
         .fetch_notifications(&sync_state, config.github_min_poll_interval_seconds)?;
+    let tracked_metadata = refresh_tracked_pr_metadata(
+        store.as_ref(),
+        github_provider.as_ref(),
+        &tracked,
+        &current_user_login,
+        &mut outcome,
+    )?;
     if poll_result.not_modified && store.github_event_count()? == 0 {
         // Recover from an empty local cache even when GitHub says nothing changed
         // since the last conditional request.
@@ -357,17 +432,16 @@ pub fn run(
     let next_state = update_sync_state(sync_state, &poll_result);
     if poll_result.not_modified {
         finalize_sync_state(store.as_ref(), next_state)?;
-        return Ok(GithubSyncOutcome::default());
+        return Ok(outcome);
     }
 
-    let current_user_login = github_provider.current_user_login()?;
-    let mut outcome = GithubSyncOutcome::default();
     process_poll_result(
         config,
         store.as_ref(),
         github_provider.as_ref(),
         &current_user_login,
         &mut tracked,
+        &tracked_metadata,
         &mut outcome,
         poll_result,
     )?;

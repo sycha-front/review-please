@@ -1,16 +1,55 @@
 use crate::models::{GithubEvent, GithubPullRef, ReviewRequest};
 
 use super::{
-    classify_review_request, matches_slack_user_id, matches_slack_username, should_mark_done,
-    update_activity_label,
+    classify_review_request, matches_slack_user_id, matches_slack_username, update_activity_label,
 };
 
 #[test]
-fn marks_done_only_for_my_approval() {
-    assert!(should_mark_done("approved", true));
-    assert!(!should_mark_done("commented", true));
-    assert!(!should_mark_done("approved", false));
-    assert!(!should_mark_done("unknown", true));
+fn marks_done_from_my_approval_event() {
+    let pull = GithubPullRef {
+        owner: "owner".to_string(),
+        repo: "repo".to_string(),
+        number: 1,
+    };
+    let request = ReviewRequest::new(
+        &pull,
+        "PR".to_string(),
+        Some("author".to_string()),
+        None,
+        "U123".to_string(),
+        "requester".to_string(),
+        None,
+        "1".to_string(),
+        None,
+        "hello".to_string(),
+        None,
+    );
+
+    let events = vec![GithubEvent {
+        id: "event-1".to_string(),
+        pr_key: request.pr_key.clone(),
+        pr_title: None,
+        repo_owner: None,
+        repo_name: None,
+        pr_number: None,
+        pr_author_login: None,
+        notification_thread_id: "thread-1".to_string(),
+        notification_reason: "review_requested".to_string(),
+        event_kind: "approved".to_string(),
+        actor_login: Some("sample-dev".to_string()),
+        actor_is_me: true,
+        related_to_me: true,
+        event_at: "2026-03-23T00:00:00Z".to_string(),
+        payload_json: "{}".to_string(),
+        created_at: "2026-03-23T00:00:00Z".to_string(),
+        read_at: None,
+    }];
+
+    assert_eq!(
+        classify_review_request(&request, &events, "sample-dev", "", "review-bot")
+            .map(|value| value.as_str().to_string()),
+        Some("done".to_string())
+    );
 }
 
 #[test]

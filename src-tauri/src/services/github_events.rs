@@ -57,14 +57,20 @@ fn build_github_review_request(
         .map(|title| format!("GitHub에서 리뷰 요청이 왔습니다.\n{title}"))
         .unwrap_or_else(|| "GitHub에서 리뷰 요청이 왔습니다.".to_string());
 
-    ReviewRequest::new_github_review_request(
+    let mut request = ReviewRequest::new_github_review_request(
         pull,
         pr_title,
         metadata.and_then(|value| value.author_login.clone()),
         metadata.and_then(|value| value.merged_at.clone()),
         notification_updated_ts(thread),
         summary,
-    )
+    );
+    if let Some(metadata) = metadata {
+        request.pr_state = Some(metadata.state.clone());
+        request.pr_closed_at = metadata.closed_at.clone();
+        request.pr_is_draft = metadata.draft;
+    }
+    request
 }
 
 fn update_review_request_metadata(
@@ -76,6 +82,9 @@ fn update_review_request_metadata(
         &pull.key(),
         &metadata.title,
         metadata.author_login.as_deref(),
+        Some(metadata.state.as_str()),
+        metadata.closed_at.as_deref(),
+        metadata.draft,
         metadata.merged_at.as_deref(),
     );
 }
@@ -99,10 +108,17 @@ fn mark_done_from_metadata(
     metadata: &PullRequestMetadata,
     outcome: &mut GithubSyncOutcome,
 ) -> Result<()> {
-    let Some(merged_at) = metadata.merged_at.as_deref() else {
+    let completed_at = metadata
+        .merged_at
+        .as_deref()
+        .or(metadata.closed_at.as_deref());
+    let Some(completed_at) = completed_at else {
         return Ok(());
     };
-    let completed = store.mark_requests_done_by_pr_key(&pull.key(), None, merged_at)?;
+    if metadata.state != "closed" && metadata.merged_at.is_none() {
+        return Ok(());
+    }
+    let completed = store.mark_requests_done_by_pr_key(&pull.key(), None, completed_at)?;
     if completed > 0 {
         outcome.completed_request_count += completed;
         push_unique_pr_key(&mut outcome.completed_pr_keys, &pull.key());
@@ -475,6 +491,9 @@ mod tests {
         let metadata = PullRequestMetadata {
             title: "Actual PR title".to_string(),
             author_login: Some("author".to_string()),
+            state: "open".to_string(),
+            closed_at: None,
+            draft: false,
             merged_at: None,
         };
 

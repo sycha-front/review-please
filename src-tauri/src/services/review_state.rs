@@ -82,6 +82,13 @@ pub fn classify_review_request(
         .map(|login| login.eq_ignore_ascii_case(github_username))
         .unwrap_or(false);
     let has_my_approval = events.iter().any(is_my_approval_event);
+    let is_closed = request
+        .pr_state
+        .as_deref()
+        .map(|state| state.eq_ignore_ascii_case("closed"))
+        .unwrap_or(false)
+        || request.pr_closed_at.is_some();
+    let is_draft = request.pr_is_draft;
     let is_merged = request.pr_merged_at.is_some();
     let overdue_by_three_days = request
         .deadline_date
@@ -90,8 +97,11 @@ pub fn classify_review_request(
         .map(|deadline| (Local::now().date_naive() - deadline).num_days() >= 3)
         .unwrap_or(false);
 
-    if overdue_by_three_days || has_my_approval || is_merged {
+    if overdue_by_three_days || has_my_approval || is_merged || is_closed {
         return Some(ReviewStatus::Done);
+    }
+    if is_draft {
+        return None;
     }
     if events.iter().any(|event| is_update_event(event, is_my_pr)) {
         return Some(ReviewStatus::Update);

@@ -43,6 +43,9 @@ pub trait ReviewStore: Send + Sync {
         pr_key: &str,
         pr_title: &str,
         pr_author_login: Option<&str>,
+        pr_state: Option<&str>,
+        pr_closed_at: Option<&str>,
+        pr_is_draft: bool,
         pr_merged_at: Option<&str>,
     ) -> Result<()>;
     fn latest_event_at_for_pr(&self, pr_key: &str) -> Result<Option<String>>;
@@ -112,6 +115,9 @@ impl SqliteStore {
               repo_name TEXT NOT NULL,
               pr_number INTEGER NOT NULL,
               pr_author_login TEXT,
+              pr_state TEXT,
+              pr_closed_at TEXT,
+              pr_is_draft INTEGER NOT NULL DEFAULT 0,
               pr_merged_at TEXT,
               requester_slack_user_id TEXT NOT NULL,
               requester_display_name TEXT NOT NULL,
@@ -173,6 +179,14 @@ impl SqliteStore {
         add_column_if_missing(connection, "github_events", "pr_number", "INTEGER")?;
         add_column_if_missing(connection, "github_events", "pr_author_login", "TEXT")?;
         add_column_if_missing(connection, "review_requests", "pr_author_login", "TEXT")?;
+        add_column_if_missing(connection, "review_requests", "pr_state", "TEXT")?;
+        add_column_if_missing(connection, "review_requests", "pr_closed_at", "TEXT")?;
+        add_column_if_missing(
+            connection,
+            "review_requests",
+            "pr_is_draft",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
         add_column_if_missing(connection, "review_requests", "pr_merged_at", "TEXT")?;
         add_column_if_missing(
             connection,
@@ -271,12 +285,14 @@ impl SqliteStore {
                 .completed_at
                 .as_deref()
                 .or(right.pr_merged_at.as_deref())
+                .or(right.pr_closed_at.as_deref())
                 .unwrap_or(&right.updated_at)
                 .cmp(
                     &left
                         .completed_at
                         .as_deref()
                         .or(left.pr_merged_at.as_deref())
+                        .or(left.pr_closed_at.as_deref())
                         .unwrap_or(&left.updated_at),
                 )
         });
@@ -430,6 +446,9 @@ fn row_to_review_request(row: &Row<'_>) -> rusqlite::Result<ReviewRequest> {
         repo_name: row.get("repo_name")?,
         pr_number: row.get("pr_number")?,
         pr_author_login: row.get("pr_author_login")?,
+        pr_state: row.get("pr_state")?,
+        pr_closed_at: row.get("pr_closed_at")?,
+        pr_is_draft: row.get::<_, i64>("pr_is_draft")? != 0,
         pr_merged_at: row.get("pr_merged_at")?,
         requester_slack_user_id: row.get("requester_slack_user_id")?,
         requester_display_name: row.get("requester_display_name")?,
@@ -822,20 +841,23 @@ impl ReviewStore for SqliteStore {
                     repo_name = ?4,
                     pr_number = ?5,
                     pr_author_login = ?6,
-                    pr_merged_at = ?7,
-                    requester_slack_user_id = ?8,
-                    requester_display_name = ?9,
-                    slack_channel_id = ?10,
-                    slack_message_ts = ?11,
-                    slack_permalink = ?12,
-                    slack_text = ?13,
-                    deadline_date = ?14,
+                    pr_state = ?7,
+                    pr_closed_at = ?8,
+                    pr_is_draft = ?9,
+                    pr_merged_at = ?10,
+                    requester_slack_user_id = ?11,
+                    requester_display_name = ?12,
+                    slack_channel_id = ?13,
+                    slack_message_ts = ?14,
+                    slack_permalink = ?15,
+                    slack_text = ?16,
+                    deadline_date = ?17,
                     status = 'pending',
                     is_status_manual = 0,
                     completed_at = NULL,
                     completion_event_id = NULL,
-                    updated_at = ?15
-                WHERE id = ?16;
+                    updated_at = ?18
+                WHERE id = ?19;
                 "#,
                 params![
                     request.pr_url,
@@ -844,6 +866,9 @@ impl ReviewStore for SqliteStore {
                     request.repo_name,
                     request.pr_number,
                     request.pr_author_login,
+                    request.pr_state,
+                    request.pr_closed_at,
+                    request.pr_is_draft as i64,
                     request.pr_merged_at,
                     request.requester_slack_user_id,
                     request.requester_display_name,
@@ -882,16 +907,16 @@ impl ReviewStore for SqliteStore {
             r#"
             INSERT INTO review_requests (
               id, pr_key, pr_url, pr_title, repo_owner, repo_name, pr_number,
-              pr_author_login, pr_merged_at,
+              pr_author_login, pr_state, pr_closed_at, pr_is_draft, pr_merged_at,
               requester_slack_user_id, requester_display_name, slack_channel_id,
               slack_message_ts, slack_permalink, slack_text, deadline_date, status, is_status_manual,
               completed_at, completion_event_id, created_at, updated_at
             ) VALUES (
               ?1, ?2, ?3, ?4, ?5, ?6, ?7,
-              ?8, ?9,
-              ?10, ?11, ?12,
-              ?13, ?14, ?15, ?16, ?17, ?18,
-              ?19, ?20, ?21, ?22
+              ?8, ?9, ?10, ?11, ?12,
+              ?13, ?14, ?15,
+              ?16, ?17, ?18, ?19, ?20, ?21,
+              ?22, ?23, ?24, ?25
             )
             ON CONFLICT(slack_message_ts, pr_key) DO UPDATE SET
               pr_url = excluded.pr_url,
@@ -900,6 +925,9 @@ impl ReviewStore for SqliteStore {
               repo_name = excluded.repo_name,
               pr_number = excluded.pr_number,
               pr_author_login = excluded.pr_author_login,
+              pr_state = excluded.pr_state,
+              pr_closed_at = excluded.pr_closed_at,
+              pr_is_draft = excluded.pr_is_draft,
               pr_merged_at = excluded.pr_merged_at,
               requester_slack_user_id = excluded.requester_slack_user_id,
               requester_display_name = excluded.requester_display_name,
@@ -918,6 +946,9 @@ impl ReviewStore for SqliteStore {
                 request.repo_name,
                 request.pr_number,
                 request.pr_author_login,
+                request.pr_state,
+                request.pr_closed_at,
+                request.pr_is_draft as i64,
                 request.pr_merged_at,
                 request.requester_slack_user_id,
                 request.requester_display_name,
@@ -1013,6 +1044,9 @@ impl ReviewStore for SqliteStore {
         pr_key: &str,
         pr_title: &str,
         pr_author_login: Option<&str>,
+        pr_state: Option<&str>,
+        pr_closed_at: Option<&str>,
+        pr_is_draft: bool,
         pr_merged_at: Option<&str>,
     ) -> Result<()> {
         let connection = self.connection()?;
@@ -1021,10 +1055,21 @@ impl ReviewStore for SqliteStore {
             UPDATE review_requests
             SET pr_title = ?1,
                 pr_author_login = ?2,
-                pr_merged_at = ?3
-            WHERE pr_key = ?4;
+                pr_state = ?3,
+                pr_closed_at = ?4,
+                pr_is_draft = ?5,
+                pr_merged_at = ?6
+            WHERE pr_key = ?7;
             "#,
-            params![pr_title, pr_author_login, pr_merged_at, pr_key],
+            params![
+                pr_title,
+                pr_author_login,
+                pr_state,
+                pr_closed_at,
+                pr_is_draft as i64,
+                pr_merged_at,
+                pr_key
+            ],
         )?;
         Ok(())
     }

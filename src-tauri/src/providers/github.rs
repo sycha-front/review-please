@@ -568,6 +568,9 @@ impl super::GithubProvider for LocalGithubProvider {
         Ok(PullRequestMetadata {
             title: response.title,
             author_login: response.user.and_then(|user| user.login),
+            state: response.state,
+            closed_at: response.closed_at,
+            draft: response.draft.unwrap_or(false),
             merged_at: response.merged_at,
         })
     }
@@ -673,6 +676,9 @@ struct CurrentUser {
 #[derive(Debug, Deserialize)]
 struct PullRequestResponse {
     title: String,
+    state: String,
+    closed_at: Option<String>,
+    draft: Option<bool>,
     merged_at: Option<String>,
     user: Option<GithubActor>,
 }

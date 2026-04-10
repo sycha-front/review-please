@@ -87,6 +87,10 @@ pub struct ReviewRequest {
     pub repo_name: String,
     pub pr_number: i64,
     pub pr_author_login: Option<String>,
+    pub pr_state: Option<String>,
+    pub pr_closed_at: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_bool_from_any")]
+    pub pr_is_draft: bool,
     pub pr_merged_at: Option<String>,
     pub requester_slack_user_id: String,
     pub requester_display_name: String,
@@ -128,6 +132,9 @@ impl ReviewRequest {
             repo_name: pull.repo.clone(),
             pr_number: pull.number,
             pr_author_login,
+            pr_state: None,
+            pr_closed_at: None,
+            pr_is_draft: false,
             pr_merged_at,
             requester_slack_user_id,
             requester_display_name,
@@ -163,6 +170,9 @@ impl ReviewRequest {
             repo_name: pull.repo.clone(),
             pr_number: pull.number,
             pr_author_login,
+            pr_state: None,
+            pr_closed_at: None,
+            pr_is_draft: false,
             pr_merged_at,
             requester_slack_user_id: String::new(),
             requester_display_name: "GitHub 리뷰 요청".to_string(),
@@ -185,6 +195,9 @@ impl ReviewRequest {
 pub struct PullRequestMetadata {
     pub title: String,
     pub author_login: Option<String>,
+    pub state: String,
+    pub closed_at: Option<String>,
+    pub draft: bool,
     pub merged_at: Option<String>,
 }
 

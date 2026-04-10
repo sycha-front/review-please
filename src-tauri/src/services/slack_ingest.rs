@@ -131,7 +131,7 @@ pub fn run(
                 .as_ref()
                 .map(|value| value.title.clone())
                 .unwrap_or_else(|| pull.key());
-            let request = ReviewRequest::new(
+            let mut request = ReviewRequest::new(
                 &pull,
                 pr_title,
                 metadata
@@ -146,6 +146,11 @@ pub fn run(
                 message.text.clone(),
                 deadline.clone(),
             );
+            if let Some(metadata) = metadata.as_ref() {
+                request.pr_state = Some(metadata.state.clone());
+                request.pr_closed_at = metadata.closed_at.clone();
+                request.pr_is_draft = metadata.draft;
+            }
             // A repeated review request for the same PR should refresh the existing
             // pending item instead of adding another copy to the queue.
             if store.upsert_review_request(&request)? {

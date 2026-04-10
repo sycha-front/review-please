@@ -145,6 +145,64 @@ fn keeps_github_review_request_as_pending() {
 }
 
 #[test]
+fn marks_closed_pr_as_done() {
+    let pull = GithubPullRef {
+        owner: "owner".to_string(),
+        repo: "repo".to_string(),
+        number: 1,
+    };
+    let mut request = ReviewRequest::new(
+        &pull,
+        "PR".to_string(),
+        Some("author".to_string()),
+        None,
+        "U123".to_string(),
+        "requester".to_string(),
+        None,
+        "1".to_string(),
+        None,
+        "hello".to_string(),
+        None,
+    );
+    request.pr_state = Some("closed".to_string());
+    request.pr_closed_at = Some("2026-03-24T00:00:00Z".to_string());
+
+    assert_eq!(
+        classify_review_request(&request, &[], "sample-dev", "", "review-bot")
+            .map(|value| value.as_str().to_string()),
+        Some("done".to_string())
+    );
+}
+
+#[test]
+fn excludes_draft_pr_from_pending() {
+    let pull = GithubPullRef {
+        owner: "owner".to_string(),
+        repo: "repo".to_string(),
+        number: 1,
+    };
+    let mut request = ReviewRequest::new(
+        &pull,
+        "PR".to_string(),
+        Some("author".to_string()),
+        None,
+        "U123".to_string(),
+        "requester".to_string(),
+        None,
+        "1".to_string(),
+        None,
+        "hello".to_string(),
+        None,
+    );
+    request.pr_is_draft = true;
+
+    assert_eq!(
+        classify_review_request(&request, &[], "sample-dev", "", "review-bot"),
+        None
+    );
+}
+
+#[test]
 fn identifies_visible_update_notifications() {
     let event = GithubEvent {
         id: "event-1".to_string(),

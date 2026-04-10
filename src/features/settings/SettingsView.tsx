@@ -35,6 +35,7 @@ export function SettingsView() {
     isLoading: isSettingsLoading,
     isSaving,
     isSlackConnecting,
+    slackAuthorizeUrl,
     saveSettings,
     connectSlack,
     disconnectSlack,
@@ -87,6 +88,7 @@ export function SettingsView() {
           form={form}
           isSaving={isSaving}
           isSlackConnecting={isSlackConnecting}
+          slackAuthorizeUrl={slackAuthorizeUrl}
           isDirty={isDirty}
           onSubmit={handleSubmit}
           onFieldChange={updateField}

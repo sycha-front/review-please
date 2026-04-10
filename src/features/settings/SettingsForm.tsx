@@ -17,6 +17,7 @@ type SettingsFormProps = {
   form: SettingsPayload;
   isSaving: boolean;
   isSlackConnecting: boolean;
+  slackAuthorizeUrl: string | null;
   isDirty: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onFieldChange: <K extends keyof SettingsPayload>(
@@ -31,6 +32,7 @@ export function SettingsForm({
   form,
   isSaving,
   isSlackConnecting,
+  slackAuthorizeUrl,
   isDirty,
   onSubmit,
   onFieldChange,
@@ -38,6 +40,9 @@ export function SettingsForm({
   onDisconnectSlack,
 }: SettingsFormProps) {
   const [showAdvancedSlackToken, setShowAdvancedSlackToken] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
   const isSaveDisabled = isSaving || !isDirty;
   const saveLabel = isSaving ? "저장 중..." : "설정 저장";
   const oauthButtonLabel = isSlackConnecting
@@ -50,6 +55,19 @@ export function SettingsForm({
     : form.slackAuthMode === "manual"
       ? "고급 옵션의 수동 Slack 토큰을 사용 중이에요."
       : "Slack OAuth 연결이 필요해요.";
+
+  async function handleCopySlackAuthUrl() {
+    if (!slackAuthorizeUrl) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(slackAuthorizeUrl);
+      setCopyStatus("copied");
+    } catch (error) {
+      console.error("[review-please] failed to copy slack auth url", error);
+      setCopyStatus("failed");
+    }
+  }
 
   return (
     <form onSubmit={onSubmit} className={s.form}>
@@ -88,6 +106,32 @@ export function SettingsForm({
           </Button>
         </div>
         <P3 className={s.helperText}>현재: {authStatusText}</P3>
+        {slackAuthorizeUrl && (
+          <div className={s.advancedPanel}>
+            <P3 className={s.helperText}>
+              다른 워크스페이스를 연결하려면 이 링크를 복사해서 시크릿 창이나
+              다른 브라우저 프로필에서 열어주세요.
+            </P3>
+            <div className={s.authCard}>
+              <Button
+                type="button"
+                color="secondary"
+                className={s.input}
+                onClick={handleCopySlackAuthUrl}
+              >
+                Slack 연결 링크 복사
+              </Button>
+            </div>
+            {copyStatus === "copied" && (
+              <P3 className={s.helperText}>링크를 클립보드에 복사했어요.</P3>
+            )}
+            {copyStatus === "failed" && (
+              <P3 className={s.helperText}>
+                링크 복사에 실패했어요. 다시 시도해주세요.
+              </P3>
+            )}
+          </div>
+        )}
         {showAdvancedSlackToken && (
           <div className={s.advancedPanel}>
             <SettingsTextField

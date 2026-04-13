@@ -109,8 +109,7 @@ export function SettingsForm({
         {slackAuthorizeUrl && (
           <div className={s.advancedPanel}>
             <P3 className={s.helperText}>
-              다른 워크스페이스를 연결하려면 이 링크를 복사해서 시크릿 창이나
-              다른 브라우저 프로필에서 열어주세요.
+              링크를 실수로 껐다면 버튼을 눌러서 다시 복사할 수 있어요.
             </P3>
             <div className={s.authCard}>
               <Button

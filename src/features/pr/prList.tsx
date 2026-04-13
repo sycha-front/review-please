@@ -112,7 +112,10 @@ export function PrItem({ item }: Props) {
       <DateInput item={item} />
       <div className={s.credit}>
         <P3>
-          {item.requester_display_name} <a {...repoLink}>@{item.repo_name}</a>
+          {item.slack_channel_id
+            ? item.requester_display_name
+            : item.pr_author_login}{" "}
+          <a {...repoLink}>@{item.repo_name}</a>
         </P3>
         <StatusCheckbox
           checked={item.status}

@@ -20,12 +20,14 @@ export default function Main({ data }: Props) {
   ).length;
 
   function handleTabClick(tab: number) {
-    document.getElementById("tab")?.scrollIntoView();
+    if (window.scrollY > 47) {
+      window.scrollTo(0, 47);
+    }
     setTab(tab);
   }
 
   return (
-    <section>
+    <section className={s.main}>
       <Tabs
         tab={tab}
         setTab={handleTabClick}

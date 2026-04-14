@@ -36,13 +36,6 @@ export function SettingsTextField({
         />
         {inputNodes}
       </div>
-      <input
-        className={s.input}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
       {description && <span className={s.helperText}>{description}</span>}
       {children}
     </label>

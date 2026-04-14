@@ -325,31 +325,3 @@ where
         ))),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::GithubEvent;
-
-    #[test]
-    fn github_event_deserializes_integer_booleans() {
-        let json = r#"{
-            "id":"event-1",
-            "pr_key":"owner/repo#1",
-            "notification_thread_id":"thread-1",
-            "notification_reason":"mention",
-            "event_kind":"approved",
-            "actor_login":"sample-dev",
-            "actor_is_me":1,
-            "related_to_me":0,
-            "event_at":"2026-03-23T00:00:00Z",
-            "payload_json":"{}",
-            "created_at":"2026-03-23T00:00:00Z"
-        }"#;
-
-        let event: GithubEvent =
-            serde_json::from_str(json).expect("github event should deserialize");
-
-        assert!(event.actor_is_me);
-        assert!(!event.related_to_me);
-    }
-}

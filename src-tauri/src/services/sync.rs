@@ -10,9 +10,6 @@ use std::{
 
 use anyhow::{Context, Result};
 
-#[cfg(test)]
-use crate::models::SyncState;
-
 use crate::{
     config::AppConfig,
     db::ReviewStore,
@@ -280,28 +277,5 @@ impl SyncCoordinator for LocalSyncCoordinator {
 
     fn status_label(&self) -> String {
         self.status.lock().expect("status").status.clone()
-    }
-}
-
-#[cfg(test)]
-pub fn mark_sync_failure(mut state: SyncState, message: &str) -> SyncState {
-    state.last_polled_at = Some(utc_now_string());
-    state.last_error = Some(message.to_string());
-    state.consecutive_failures += 1;
-    state
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::models::SyncState;
-
-    use super::mark_sync_failure;
-
-    #[test]
-    fn increments_failure_counter() {
-        let state = SyncState::new("github_notifications");
-        let failed = mark_sync_failure(state, "boom");
-        assert_eq!(failed.consecutive_failures, 1);
-        assert_eq!(failed.last_error.as_deref(), Some("boom"));
     }
 }

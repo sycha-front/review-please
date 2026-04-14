@@ -8,6 +8,7 @@ type TextFieldProps = {
   type?: "text" | "password";
   placeholder?: string;
   description?: string;
+  inputNodes?: ReactNode[];
   children?: ReactNode;
   onChange: (value: string) => void;
 };
@@ -18,12 +19,23 @@ export function SettingsTextField({
   type = "text",
   placeholder,
   description,
+  inputNodes,
   children,
   onChange,
 }: TextFieldProps) {
   return (
     <label className={s.label}>
       {label}
+      <div className={s.authCard}>
+        <input
+          className={s.input}
+          type={type}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.currentTarget.value)}
+        />
+        {inputNodes}
+      </div>
       <input
         className={s.input}
         type={type}

@@ -35,6 +35,7 @@ export function SettingsView() {
     saveSettings,
     connectSlack,
     disconnectSlack,
+    slackAuthorizeUrl,
   } = useSettings();
   const [form, setForm] = useState<SettingsPayload | null>(null);
 
@@ -84,6 +85,7 @@ export function SettingsView() {
           form={form}
           isSaving={isSaving}
           isSlackConnecting={isSlackConnecting}
+          slackAuthorizeUrl={slackAuthorizeUrl}
           isDirty={isDirty}
           onSubmit={handleSubmit}
           onFieldChange={updateField}

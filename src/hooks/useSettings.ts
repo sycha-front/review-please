@@ -11,6 +11,7 @@ export type UseSettingsResult = {
   isLoading: boolean;
   isSaving: boolean;
   isSlackConnecting: boolean;
+  slackAuthorizeUrl: string | null;
   saveSettings: (next: SettingsPayload) => Promise<SettingsPayload>;
   connectSlack: () => Promise<void>;
   disconnectSlack: () => Promise<void>;
@@ -19,6 +20,7 @@ export type UseSettingsResult = {
 type StartSlackOauthResponse = {
   sessionId: string;
   sessionSecret: string;
+  authorizeUrl: string;
   expiresAt: string;
 };
 
@@ -40,6 +42,7 @@ export function useSettings(): UseSettingsResult {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSlackConnecting, setIsSlackConnecting] = useState(false);
+  const [slackAuthorizeUrl, setSlackAuthorizeUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -115,6 +118,7 @@ export function useSettings(): UseSettingsResult {
         setError(null);
       });
       const started = await invoke<StartSlackOauthResponse>("start_slack_oauth");
+      setSlackAuthorizeUrl(started.authorizeUrl);
       const expiresAt = Date.parse(started.expiresAt);
 
       while (Date.now() < expiresAt + 5000) {
@@ -135,6 +139,7 @@ export function useSettings(): UseSettingsResult {
             setSettings(polled.settings);
             setError(null);
           });
+          setSlackAuthorizeUrl(null);
           return;
         }
 
@@ -167,6 +172,7 @@ export function useSettings(): UseSettingsResult {
         setSettings(next);
         setError(null);
       });
+      setSlackAuthorizeUrl(null);
     } catch (disconnectError) {
       const message =
         disconnectError instanceof Error
@@ -188,6 +194,7 @@ export function useSettings(): UseSettingsResult {
     isLoading,
     isSaving,
     isSlackConnecting,
+    slackAuthorizeUrl,
     saveSettings,
     connectSlack,
     disconnectSlack,

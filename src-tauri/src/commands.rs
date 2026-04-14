@@ -89,6 +89,7 @@ pub struct RunAppUpdatePayload {}
 pub struct StartSlackOauthResponse {
     pub session_id: String,
     pub session_secret: String,
+    pub authorize_url: String,
     pub expires_at: String,
 }
 
@@ -275,6 +276,7 @@ pub fn start_slack_oauth(state: State<'_, AppState>) -> Result<StartSlackOauthRe
     Ok(StartSlackOauthResponse {
         session_id: session.session_id,
         session_secret: session.session_secret,
+        authorize_url: session.authorize_url,
         expires_at: session.expires_at,
     })
 }

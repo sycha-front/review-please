@@ -13,7 +13,7 @@ function App() {
 
   return (
     <main className={s.page}>
-      <Header integrations={snapshot?.integrations ?? null} />
+      <Header data={snapshot} />
       {snapshot && (
         <ReviewActionsProvider {...reviewState}>
           <Main data={snapshot} />

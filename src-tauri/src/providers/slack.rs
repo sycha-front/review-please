@@ -31,10 +31,10 @@ pub fn extract_deadline(text: &str, base_date: NaiveDate) -> Option<String> {
     let bracket_regex = Regex::new(r"\[([^\]]+)\]").expect("valid regex");
     for captures in bracket_regex.captures_iter(text) {
         let content = captures.get(1)?.as_str();
-        if let Some(date) = extract_numeric_deadline(content, base_date.year()) {
-            return Some(date.to_string());
-        }
-        if let Some(date) = extract_relative_deadline(content, base_date) {
+        if let Some(date) = extract_weekday_deadline(content, base_date)
+            .or_else(|| extract_relative_deadline(content, base_date))
+            .or_else(|| extract_numeric_deadline(content, base_date))
+        {
             return Some(date.to_string());
         }
     }
@@ -61,20 +61,31 @@ pub fn slack_ts_to_local_date(ts: &str) -> Option<NaiveDate> {
         .map(|value| value.date_naive())
 }
 
-fn extract_numeric_deadline(content: &str, year: i32) -> Option<NaiveDate> {
+fn extract_numeric_deadline(content: &str, base_date: NaiveDate) -> Option<NaiveDate> {
     let slash_or_dot_regex = Regex::new(r"(\d{1,2})\s*[/.]\s*(\d{1,2})").expect("valid regex");
     if let Some(captures) = slash_or_dot_regex.captures(content) {
         let month = captures.get(1)?.as_str().parse::<u32>().ok()?;
         let day = captures.get(2)?.as_str().parse::<u32>().ok()?;
-        return NaiveDate::from_ymd_opt(year, month, day);
+        return next_upcoming_date(base_date, month, day);
     }
 
-    let korean_regex =
-        Regex::new(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일").expect("valid regex");
+    let korean_regex = Regex::new(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일").expect("valid regex");
     let captures = korean_regex.captures(content)?;
     let month = captures.get(1)?.as_str().parse::<u32>().ok()?;
     let day = captures.get(2)?.as_str().parse::<u32>().ok()?;
-    NaiveDate::from_ymd_opt(year, month, day)
+    next_upcoming_date(base_date, month, day)
+}
+
+fn next_upcoming_date(base_date: NaiveDate, month: u32, day: u32) -> Option<NaiveDate> {
+    for year in base_date.year()..=base_date.year() + 8 {
+        let Some(candidate) = NaiveDate::from_ymd_opt(year, month, day) else {
+            continue;
+        };
+        if candidate >= base_date {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 fn extract_relative_deadline(content: &str, base_date: NaiveDate) -> Option<NaiveDate> {
@@ -84,31 +95,84 @@ fn extract_relative_deadline(content: &str, base_date: NaiveDate) -> Option<Naiv
     if content.contains("명일") || content.contains("내일") {
         return Some(base_date + Duration::days(1));
     }
-    if content.contains("차주") {
-        let weekday_regex = Regex::new(r"차주\s*([월화수목금토일])").expect("valid regex");
-        let weekday = weekday_regex
-            .captures(content)
-            .and_then(|captures| captures.get(1))
-            .and_then(|capture| match capture.as_str() {
-                "월" => Some(Weekday::Mon),
-                "화" => Some(Weekday::Tue),
-                "수" => Some(Weekday::Wed),
-                "목" => Some(Weekday::Thu),
-                "금" => Some(Weekday::Fri),
-                "토" => Some(Weekday::Sat),
-                "일" => Some(Weekday::Sun),
-                _ => None,
-            })?;
-        return Some(next_weekday(base_date, weekday));
+    None
+}
+
+enum WeekScope {
+    ThisWeek,
+    NextWeek,
+}
+
+fn extract_weekday_deadline(content: &str, base_date: NaiveDate) -> Option<NaiveDate> {
+    let weekday = extract_weekday(content)?;
+    if let Some(scope) = extract_week_scope(content) {
+        return Some(resolve_weekday_in_scope(base_date, scope, weekday));
+    }
+
+    let explicit_date = extract_numeric_deadline(content, base_date)
+        .or_else(|| extract_relative_deadline(content, base_date))?;
+    Some(resolve_nearest_weekday(explicit_date, base_date, weekday))
+}
+
+fn extract_week_scope(content: &str) -> Option<WeekScope> {
+    if content.contains("차주") || content.contains("다음주") || content.contains("다음 주") {
+        return Some(WeekScope::NextWeek);
+    }
+    if content.contains("금주") || content.contains("이번주") || content.contains("이번 주") {
+        return Some(WeekScope::ThisWeek);
     }
     None
 }
 
-fn next_weekday(base_date: NaiveDate, target: Weekday) -> NaiveDate {
-    let current = weekday_index(base_date.weekday());
-    let target = weekday_index(target);
-    let offset = 7 - current + target;
-    base_date + Duration::days(offset)
+fn extract_weekday(content: &str) -> Option<Weekday> {
+    let weekday_regex =
+        Regex::new(r"(?:^|[\s(/]|주)([월화수목금토일])(?:요일)?(?:$|[\s)])").expect("valid regex");
+    weekday_regex
+        .captures(content)
+        .and_then(|captures| captures.get(1))
+        .and_then(|capture| parse_weekday(capture.as_str()))
+}
+
+fn parse_weekday(value: &str) -> Option<Weekday> {
+    match value {
+        "월" => Some(Weekday::Mon),
+        "화" => Some(Weekday::Tue),
+        "수" => Some(Weekday::Wed),
+        "목" => Some(Weekday::Thu),
+        "금" => Some(Weekday::Fri),
+        "토" => Some(Weekday::Sat),
+        "일" => Some(Weekday::Sun),
+        _ => None,
+    }
+}
+
+fn resolve_weekday_in_scope(base_date: NaiveDate, scope: WeekScope, weekday: Weekday) -> NaiveDate {
+    let week_start = start_of_week(base_date);
+    let offset = weekday_index(weekday);
+    match scope {
+        WeekScope::ThisWeek => week_start + Duration::days(offset),
+        WeekScope::NextWeek => week_start + Duration::days(7 + offset),
+    }
+}
+
+fn resolve_nearest_weekday(date: NaiveDate, base_date: NaiveDate, weekday: Weekday) -> NaiveDate {
+    if date.weekday() == weekday {
+        return date;
+    }
+
+    (-6..=6)
+        .filter_map(|offset| {
+            let candidate = date + Duration::days(offset);
+            (candidate >= base_date && candidate.weekday() == weekday)
+                .then_some((offset.abs(), candidate))
+        })
+        .min_by_key(|(distance, candidate)| (*distance, *candidate))
+        .map(|(_, candidate)| candidate)
+        .expect("date should resolve to a weekday within one week")
+}
+
+fn start_of_week(base_date: NaiveDate) -> NaiveDate {
+    base_date - Duration::days(weekday_index(base_date.weekday()))
 }
 
 fn weekday_index(value: Weekday) -> i64 {

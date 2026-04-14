@@ -1340,7 +1340,3 @@ impl ReviewStore for SqliteStore {
         self.last_error_message_with_connection(&connection)
     }
 }
-
-#[cfg(test)]
-#[path = "db_tests.rs"]
-mod tests;

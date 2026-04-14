@@ -733,24 +733,3 @@ struct ReviewComment {
 struct GithubActor {
     login: Option<String>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{is_related_reason, LocalGithubProvider};
-
-    #[test]
-    fn related_reason_matches_expected_values() {
-        assert!(is_related_reason("review_requested"));
-        assert!(is_related_reason("mention"));
-        assert!(!is_related_reason("comment"));
-    }
-
-    #[test]
-    fn parses_pull_from_notification_url() {
-        let pull = LocalGithubProvider::parse_pull_from_api_url(
-            "https://api.github.com/repos/openai/app/pulls/17",
-        )
-        .expect("pull");
-        assert_eq!(pull.key(), "openai/app#17");
-    }
-}

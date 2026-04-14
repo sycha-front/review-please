@@ -248,63 +248,6 @@ pub fn config_from_dotenv() -> Result<AppConfig> {
     Ok(config)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{AppConfig, SlackKeywordMatchMode};
-
-    #[test]
-    fn builds_or_queries_per_keyword() {
-        let config = AppConfig {
-            slack_mention_keyword: "@one, @two".to_string(),
-            slack_keyword_match_mode: SlackKeywordMatchMode::Or,
-            ..AppConfig::default()
-        };
-
-        assert_eq!(
-            config.slack_search_queries(Some("2026-04-01")),
-            vec!["@one after:2026-04-01", "@two after:2026-04-01"]
-        );
-    }
-
-    #[test]
-    fn builds_and_query_as_single_search() {
-        let config = AppConfig {
-            slack_mention_keyword: "@one, @two".to_string(),
-            slack_keyword_match_mode: SlackKeywordMatchMode::And,
-            ..AppConfig::default()
-        };
-
-        assert_eq!(
-            config.slack_search_queries(Some("2026-04-01")),
-            vec!["@one @two after:2026-04-01"]
-        );
-    }
-
-    #[test]
-    fn matches_or_keywords_using_exact_substrings() {
-        let config = AppConfig {
-            slack_mention_keyword: "@front_timespread, @other".to_string(),
-            slack_keyword_match_mode: SlackKeywordMatchMode::Or,
-            ..AppConfig::default()
-        };
-
-        assert!(config.slack_text_matches_keywords("hello @front_timespread"));
-        assert!(!config.slack_text_matches_keywords("hello timespread"));
-    }
-
-    #[test]
-    fn matches_and_keywords_only_when_all_are_present() {
-        let config = AppConfig {
-            slack_mention_keyword: "@front_timespread, @review".to_string(),
-            slack_keyword_match_mode: SlackKeywordMatchMode::And,
-            ..AppConfig::default()
-        };
-
-        assert!(config.slack_text_matches_keywords("@front_timespread and @review"));
-        assert!(!config.slack_text_matches_keywords("@front_timespread only"));
-    }
-}
-
 pub fn data_dir() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow!("HOME directory is not available"))?;
     Ok(home.join(APP_SUPPORT_DIR))

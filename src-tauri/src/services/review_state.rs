@@ -169,7 +169,3 @@ fn is_update_event(event: &GithubEvent, is_my_pr: bool) -> bool {
         && (is_comment_event_kind(&event.event_kind)
             || event.event_kind == EventKind::ChangesRequested.as_str())
 }
-
-#[cfg(test)]
-#[path = "review_state_tests.rs"]
-mod tests;

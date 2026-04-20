@@ -191,6 +191,20 @@ pub struct LocalSlackProvider {
     credentials: Arc<dyn CredentialStore>,
 }
 
+fn exact_keyword_from_query(query: &str) -> &str {
+    query
+        .rsplit_once(" after:")
+        .map(|(keyword, _)| keyword)
+        .unwrap_or(query)
+        .trim()
+        .trim_matches('"')
+}
+
+fn message_contains_exact_keyword(text: &str, query: &str) -> bool {
+    let keyword = exact_keyword_from_query(query);
+    !keyword.is_empty() && text.to_lowercase().contains(&keyword.to_lowercase())
+}
+
 impl LocalSlackProvider {
     pub fn new(credentials: Arc<dyn CredentialStore>) -> Self {
         Self { credentials }
@@ -260,10 +274,14 @@ impl super::SlackProvider for LocalSlackProvider {
             .matches
             .into_iter()
             .filter_map(|item| {
+                let text = item.text.unwrap_or_default();
+                if !message_contains_exact_keyword(&text, keyword) {
+                    return None;
+                }
                 Some(SlackMessageRef {
                     ts: item.ts?,
                     channel_id: item.channel.and_then(|channel| channel.id),
-                    text: item.text.unwrap_or_default(),
+                    text,
                     user_id: item.user?,
                 })
             })

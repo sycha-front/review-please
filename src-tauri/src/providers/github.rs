@@ -368,6 +368,32 @@ impl super::GithubProvider for LocalGithubProvider {
         })
     }
 
+    fn fetch_latest_approval_event(
+        &self,
+        pull: &GithubPullRef,
+        current_user_login: &str,
+    ) -> Result<Option<GithubEvent>> {
+        let mut events = self.collect_review_events(
+            pull,
+            "tracked_reconcile",
+            &format!("tracked:{}", pull.key()),
+            None,
+            current_user_login,
+        )?;
+        events.retain(|event| {
+            event.actor_is_me && event.event_kind == EventKind::Approved.as_str()
+        });
+        events.sort_by(|left, right| left.event_at.cmp(&right.event_at));
+
+        let Some(mut event) = events.pop() else {
+            return Ok(None);
+        };
+        event.repo_owner = Some(pull.owner.clone());
+        event.repo_name = Some(pull.repo.clone());
+        event.pr_number = Some(pull.number);
+        Ok(Some(event))
+    }
+
     fn fetch_notifications(
         &self,
         sync_state: &SyncState,

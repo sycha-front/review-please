@@ -961,7 +961,7 @@ impl ReviewStore for SqliteStore {
     fn tracked_pr_keys(&self) -> Result<Vec<String>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT DISTINCT pr_key FROM review_requests WHERE status IN ('pending', 'update');",
+            "SELECT DISTINCT pr_key FROM review_requests WHERE status IN ('pending', 'update') AND is_status_manual = 0;",
         )?;
         let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
         collect_rows(rows)
